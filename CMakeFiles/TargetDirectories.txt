@@ -1,3 +1,0 @@
-/mnt/c/Users/Daniel/Desktop/FBthesis/Algorithms/Algorithms/CMakeFiles/rebuild_cache.dir
-/mnt/c/Users/Daniel/Desktop/FBthesis/Algorithms/Algorithms/CMakeFiles/Algorithms.dir
-/mnt/c/Users/Daniel/Desktop/FBthesis/Algorithms/Algorithms/CMakeFiles/edit_cache.dir

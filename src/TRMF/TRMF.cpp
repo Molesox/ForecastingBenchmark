@@ -43,12 +43,13 @@ void TRMF::fit()
 
         arma::uvec index;
         mat theta0;
+        mat inv;
 
         for (int i = 0; i < m_id.n_rows; ++i)
         {
             mat v3 = var3.col(i);
             v3.reshape(m_rank, m_rank);
-            m_W.row(i) = ((v3 + m_lambdas(0) * m_rank_eye).i() * var4.col(i)).t();
+            m_W.row(i) = (arma::inv(v3 + m_lambdas(0) * m_rank_eye) * var4.col(i)).t();
         }
 
         var1 = m_W.t();
@@ -69,7 +70,7 @@ void TRMF::fit()
             else
             {
                 m_Pt.eye();
-                m_Qt = sum(m_T % m_X.rows(t - m_lags), 0);
+                m_Qt = arma::sum(m_T % m_X.rows(t - m_lags), 0);
             }
             if (t < m_id.n_cols - min(m_lags))
             {
@@ -83,16 +84,32 @@ void TRMF::fit()
                 }
                 for (const auto &k : index)
                 {
-                    
-                     theta0 = m_T;
-                     theta0.row(k).zeros();                   
-                     m_Mt = m_Mt + arma::diagmat(arma::square(m_T.row(k)));
+                    theta0 = m_T;
+                    theta0.row(k).zeros();
+                    m_Mt = m_Mt + arma::diagmat(arma::square(m_T.row(k)));
+                    mat temp = (m_X.row(t + m_lags(k)) - arma::sum(theta0 % m_X.rows(t + m_lags(k) - m_lags)));
+                    m_Nt = m_Nt + (m_T.row(k) % temp).t();
                 }
-                
+                inv = arma::inv(arma::reshape(var3.col(t), m_rank, m_rank) + m_lambdas(1) * (m_Pt + m_Mt + m_eta * m_rank_eye));
+                m_X.row(t) = (inv * (var4.col(t) + m_lambdas(1) * (m_Qt.t() + m_Nt))).t();
             }
             else
             {
+                inv = arma::inv(arma::reshape(var3.col(t), m_rank, m_rank) + m_lambdas(1) * (m_Pt + m_eta * m_rank_eye));
+                m_X.row(t) = (inv * (var4.col(t) + m_Qt.t())).t();
             }
+        }
+        for (size_t k = 0; k < m_nb_lags; k++)
+        {
+            var1 = m_X.rows(arma::max(m_lags) - m_lags(k), m_id.n_cols - m_lags(k) - 1);
+            var2 = arma::inv(arma::diagmat(arma::sum(var1 % var1)) + (m_lambdas(2) / m_lambdas(1)) * m_rank_eye);
+            var3 = vec(m_rank, arma::fill::zeros);
+            
+            for (size_t t = (arma::max(m_lags) - m_lags(k)); t <  m_id.n_cols - m_lags(k); t++)
+            {
+                var3 = var3 +( m_X.row(t) % (m_X.row(t + m_lags(k)) - arma::sum( m_T % m_X.rows(t+m_lags(k)-m_lags)) + (m_T.row(k) % m_X.row(t)))).t();   
+            }
+            m_T.row(k) = (var2 * var3).t();            
         }
     }
 }

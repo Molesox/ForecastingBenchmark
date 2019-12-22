@@ -13,7 +13,7 @@ public:
     void fit();
 
 
-protected:
+//protected:
 
     arma::mat &m_data;
     arma::mat &m_id;

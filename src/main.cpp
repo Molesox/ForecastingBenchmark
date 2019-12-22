@@ -176,17 +176,32 @@ static void TEST_TRMF()
     arma::mat data;
 
     double eta = 0.1;
-    size_t maxiter = 1;
+    size_t maxiter = 100;
 
     time_lags << 1 << 2;
     lambdas << 0.75 << 0.75 << 0.75;
 
     data = arma::mat(5, 10, arma::fill::ones);
     data = data.cols(0, data.n_cols - (STEPS + 1));
-    std::cout << "datashape (" << data.n_rows << "," << data.n_cols <<")"<< std::endl;
-
+   
     TRMF trmf = TRMF(data, data, time_lags, 5, lambdas, eta, maxiter);
     trmf.fit();
+
+    arma::mat X = trmf.m_X;
+    arma::mat W = trmf.m_W;
+    arma::mat Theta = trmf.m_T;
+
+    std::cout << "X = (" << X.n_rows << "," << X.n_cols << ")" << std::endl;
+    std::cout << X <<std::endl;
+    std::cout << "W = (" << W.n_rows << "," << W.n_cols << ")" << std::endl;
+    std::cout << W <<std::endl;
+    std::cout << "Theta = (" << Theta.n_rows << "," << Theta.n_cols << ")" << std::endl;
+    std::cout << Theta <<std::endl;
+    std::cout<< "result" <<std::endl;
+    
+    std::cout<< W * X.t() <<std::endl;
+    
+
 }
 
 

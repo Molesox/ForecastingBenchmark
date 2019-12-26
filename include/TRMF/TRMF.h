@@ -11,7 +11,7 @@ public:
     explicit TRMF(arma::mat &data, arma::mat &idmat, arma::uvec const &lags, size_t rank, arma::vec const &lambda,
                   double eta, size_t maxiter);
     void fit();
-
+    static arma::mat one_pred(arma::mat &data, arma::mat &idmat, arma::uvec const& lags, size_t rank, arma::vec const &lambdas, double eta, size_t maxiter, size_t pred_steps, size_t back_steps);
 
 //protected:
 

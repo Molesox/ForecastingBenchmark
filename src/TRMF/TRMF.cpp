@@ -16,12 +16,9 @@ TRMF::TRMF(mat &data, mat &idmat, arma::uvec const &lags, size_t rank, arma::vec
     m_nb_lags = m_lags.n_rows;
 
     //Initialisation
-    m_W = mat(m_data.n_rows, m_rank, arma::fill::ones);
-    m_X = mat(m_data.n_cols, m_rank, arma::fill::ones);
-    m_T = mat(m_nb_lags, m_rank, arma::fill::ones);
-
-    m_binary = mat(m_id.n_rows, m_id.n_cols, arma::fill::zeros);
-    m_binary.elem(arma::find(m_id > 0)).ones();
+    m_W = 0.1 *  mat(m_data.n_rows, m_rank, arma::fill::randn);
+    m_X = 0.1 * mat(m_data.n_cols, m_rank, arma::fill::randn);
+    m_T = 0.1 * mat(m_nb_lags, m_rank, arma::fill::randn);
 
     m_Mt = mat(m_rank, m_rank, arma::fill::zeros);
     m_Nt = vec(m_rank, arma::fill::zeros);
@@ -34,6 +31,8 @@ TRMF::TRMF(mat &data, mat &idmat, arma::uvec const &lags, size_t rank, arma::vec
 
 void TRMF::fit()
 {
+    m_binary = mat(m_id.n_rows, m_id.n_cols, arma::fill::zeros);
+    m_binary.elem(arma::find(m_id > 0)).ones();
     for (size_t it = 0; it < m_maxiter; ++it)
     {
         mat var1 = m_X.t();
@@ -56,7 +55,7 @@ void TRMF::fit()
         var2 = kr_prod(var1, var1);
         var3 = var2 * m_binary;
         var4 = var1 * m_id;
-        
+
         for (size_t t = 0; t < m_id.n_cols; ++t)
         {
             m_Mt.zeros();
@@ -104,19 +103,63 @@ void TRMF::fit()
             var1 = m_X.rows(arma::max(m_lags) - m_lags(k), m_id.n_cols - m_lags(k) - 1);
             var2 = arma::inv(arma::diagmat(arma::sum(var1 % var1)) + (m_lambdas(2) / m_lambdas(1)) * m_rank_eye);
             var3 = vec(m_rank, arma::fill::zeros);
-            
-            for (size_t t = (arma::max(m_lags) - m_lags(k)); t <  m_id.n_cols - m_lags(k); t++)
+
+            for (size_t t = (arma::max(m_lags) - m_lags(k)); t < m_id.n_cols - m_lags(k); t++)
             {
-                var3 = var3 +( m_X.row(t) % (m_X.row(t + m_lags(k)) - arma::sum( m_T % m_X.rows(t+m_lags(k)-m_lags)) + (m_T.row(k) % m_X.row(t)))).t();   
+                var3 = var3 + (m_X.row(t) % (m_X.row(t + m_lags(k)) - arma::sum(m_T % m_X.rows(t + m_lags(k) - m_lags)) + (m_T.row(k) % m_X.row(t)))).t();
             }
-            m_T.row(k) = (var2 * var3).t();            
+            m_T.row(k) = (var2 * var3).t();
         }
     }
 }
 
+arma::mat TRMF::one_pred(mat &data, mat &idmat, arma::uvec const &lags, size_t rank, vec const &lambdas, double eta, size_t maxiter, size_t pred_steps, size_t back_steps)
+{
+    size_t start_time = data.n_cols - pred_steps;
+
+    mat data0 = data.cols(0, start_time-1);
+    mat id0 = idmat.cols(0, start_time-1);
+
+    size_t dim1 = id0.n_rows;
+    size_t dim2 = id0.n_cols;
+
+    TRMF trmf(data0, id0, lags, rank, lambdas, eta, maxiter);
+    trmf.fit();
+    
+    mat X0 = mat(dim2 + 1, rank, arma::fill::zeros);
+    X0.rows(0, dim2-1) = trmf.m_X.rows(0, dim2-1);    
+    X0.row(dim2) = arma::sum(trmf.m_T % X0.rows(dim2 - lags));
+
+
+
+    trmf.m_X = X0.rows(X0.n_rows - back_steps, X0.n_rows-1);
+
+    mat pred_mat = mat(dim1, pred_steps, arma::fill::zeros);
+    pred_mat.col(0) = trmf.m_W * X0.row(dim2).t();
+
+
+trmf.m_maxiter = 100;
+for (size_t t = 1; t < pred_steps; t++)
+{
+    trmf.m_data = data.cols(start_time - back_steps + t, start_time + t-1);
+    trmf.m_id = idmat.cols(start_time - back_steps + t, start_time + t-1);
+
+    trmf.fit();
+
+    X0.zeros(back_steps+1,rank);
+    X0.rows(0,back_steps-1) = trmf.m_X.rows(0,back_steps-1);
+    X0.row(back_steps) = arma::sum(trmf.m_T % X0.rows(back_steps - lags));
+
+    trmf.m_X = X0.rows(1, back_steps );
+    pred_mat.col(t) = trmf.m_W * X0.row(back_steps).t();
+
+}
+    return pred_mat;
+}
+
 arma::mat TRMF::kr_prod(arma::mat const &A, arma::mat const &B)
 {
-    arma::mat result = arma::mat(A.n_rows * B.n_rows, B.n_cols, arma::fill::zeros);
+    mat result = mat(A.n_rows * B.n_rows, B.n_cols, arma::fill::zeros);
     for (int i = 0; i < A.n_cols; ++i)
     {
         result.col(i) = arma::kron(A.col(i), B.col(i));

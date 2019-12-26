@@ -169,7 +169,7 @@ static void TEST_MAME()
 
 static void TEST_TRMF()
 {
-    int STEPS = 1;
+    int STEPS = 10;
 
     arma::uvec time_lags;
     arma::vec lambdas;
@@ -181,8 +181,11 @@ static void TEST_TRMF()
     time_lags << 1 << 2;
     lambdas << 0.75 << 0.75 << 0.75;
 
-    data = arma::mat(5, 10, arma::fill::ones);
+    data = arma::mat(5, 100, arma::fill::ones);
     data = data.cols(0, data.n_cols - (STEPS + 1));
+    std::cout << "data = (" << data.n_rows << "," << data.n_cols << ")" << std::endl;
+    std::cout << data <<std::endl;
+    
    
     TRMF trmf = TRMF(data, data, time_lags, 5, lambdas, eta, maxiter);
     trmf.fit();
@@ -198,12 +201,35 @@ static void TEST_TRMF()
     std::cout << "Theta = (" << Theta.n_rows << "," << Theta.n_cols << ")" << std::endl;
     std::cout << Theta <<std::endl;
     std::cout<< "result" <<std::endl;
+    arma::mat temp = (W * X.t());
+    std::cout << "temp = (" << temp.n_rows << "," << temp.n_cols << ")" << std::endl;
+       
+    std::cout<< temp.cols(data.n_cols - (STEPS + 1), (data.n_cols)-1) <<std::endl;
     
-    std::cout<< W * X.t() <<std::endl;
-    
-
 }
 
+static void TEST_TRMF2()
+{
+    int STEPS = 10;
+
+    arma::uvec time_lags;
+    arma::vec lambdas;
+    arma::mat data;
+
+    double eta = 0.09;
+    size_t maxiter = 500;
+
+    time_lags << 1 << 2;
+    lambdas << 0.75 << 0.75 << 0.75;
+
+    data = arma::mat(5, 200, arma::fill::ones);
+
+   arma::mat pred =  TRMF::one_pred(data,data,time_lags,10,lambdas,eta,maxiter,STEPS,20);
+   std::cout << "pred = (" << pred.n_rows << "," << pred.n_cols << ")" << std::endl;
+   std::cout << pred <<std::endl;
+   
+
+}
 
 int main()
 {
@@ -217,7 +243,7 @@ int main()
     //  uvec index = linspace<uvec>(0, 4-1, 4);
     //  std::cout<< index <<std::endl;
 
-    TEST_TRMF();
+    TEST_TRMF2();
 
 
     return 0;

@@ -5,11 +5,12 @@ set(CMAKE_CXX_STANDARD 17)
 
 include(FindLAPACK)
 find_package(Armadillo REQUIRED)
-
+find_package(HDF5 REQUIRED)
+include_directories(${HDF5_INCLUDE_DIRS})
 include_directories(include)
 include_directories(src)
 
-set(CMAKE_CXX_FLAGS "-O3  -DARMA_DONT_USE_WRAPPER -DARMA_USE_ARPACK")
+set(CMAKE_CXX_FLAGS "-O3  -DARMA_DONT_USE_WRAPPER -DARMA_USE_ARPACK -DARMA_USE_HDF5")
 
 add_executable(Algorithms
         include/OMF/FixedPenalty.h
@@ -44,4 +45,5 @@ target_link_libraries(
         ${Armadillo_LIBRARIES}
         -lblas
         -llapack
+        ${HDF5_LIBRARIES}
 )

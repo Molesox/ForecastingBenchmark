@@ -12,7 +12,7 @@ public:
                   double eta, size_t maxiter);
     void fit();
     static arma::mat one_pred(arma::mat &data, arma::mat &idmat, arma::uvec const& lags, size_t rank, arma::vec const &lambdas, double eta, size_t maxiter, size_t pred_steps, size_t back_steps);
-
+    static arma::mat multi_pred(arma::mat &data, arma::mat &idmat, arma::uvec const& lags, size_t rank, arma::vec &lambdas, double eta, size_t maxiter, size_t pred_steps, size_t multi_steps);
 //protected:
 
     arma::mat &m_data;

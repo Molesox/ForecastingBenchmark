@@ -19,6 +19,7 @@
 
 #include "LSRN/LatentSpaceRN.h"
 
+#include <chrono>
 
 std::string input = "../IO/datasets/electricity.txt";
 std::string output = "../IO/outputs/";
@@ -93,30 +94,35 @@ static void TEST_OATS()
     }
 }
 
-static void TEST_LSRN(int ts)
+static void TEST_LSRN()
 {
-
+    input = "../IO/datasets/LSMRN/";
     size_t STEPS = 100;
-
+    size_t ts = 0;
     //Load data
     arma::mat data;
-    data.load(input);
+    data.load(input + "traffic.txt");
+    std::cout << "data = (" << data.n_rows << "," << data.n_cols << ")" << std::endl;
+
     double min = data.min();
+    std::cout << min << std::endl;
 
     arma::vec vadd(STEPS, arma::fill::zeros);
     arma::rowvec radd(STEPS + 1, arma::fill::zeros);
 
-    arma::mat concat;
+    //arma::mat concat;
     arma::mat W;
-    W.load("/home/daniel/Desktop/mpelec/W/W" + std::to_string(ts + 1) + ".txt");
-    concat = arma::join_rows(W, vadd);
-    W = arma::join_cols(concat, radd);
+    W.load(input + "adj_mat.txt");
+    std::cout << "W = (" << W.n_rows << "," << W.n_cols << ")" << std::endl;
+
+    //concat = arma::join_rows(W, vadd);
+    //W = arma::join_cols(concat, radd);
 
     //Algorithm doesn't handle negative values.
     arma::mat train = data.rows(0, 5000 - (STEPS + 1));
     train.transform([min](double val) { return (val + (-1) * min); });
 
-    arma::mat real = data.rows(5000 - (STEPS), 4999);
+    arma::mat real = data.rows(5000 - (STEPS), 5000 - 1);
 
     arma::vec realV = real.col(ts);
     arma::vec topred = train.col(ts);
@@ -134,8 +140,8 @@ static void TEST_LSRN(int ts)
         predV(i) = pred(i, i + 1);
     }
 
-    predV.save(output + "predV" + std::to_string(ts + 1) + ".txt", arma::raw_ascii);
-    realV.save(output + "realV" + std::to_string(ts + 1) + ".txt", arma::raw_ascii);
+    predV.save(output + "LSMRN/predV" + std::to_string(ts + 1) + ".txt", arma::raw_ascii);
+    realV.save(output + "LSMRN/realV" + std::to_string(ts + 1) + ".txt", arma::raw_ascii);
 
     double rmse = sqrt(arma::mean(arma::pow(realV - predV, 2)));
     std::cout << ts << " :: RMSE = " << rmse << std::endl;
@@ -213,7 +219,7 @@ static void TEST_TRMF2()
 
     data.load(input);
     data = data.t();
-    
+
     arma::mat pred = TRMF::one_pred(data, data, time_lags, 10, lambdas, eta, maxiter, STEPS, 20);
     std::cout << "pred = (" << pred.n_rows << "," << pred.n_cols << ")" << std::endl;
     std::cout << pred << std::endl;
@@ -221,34 +227,36 @@ static void TEST_TRMF2()
 
 static void TEST_TRMF3()
 {
+    double etas[5] = {0.01, 0.1, 0.2, 0.3, 0.4};
+    for (auto const &eta : etas)
+    {
+        size_t STEPS = 168;
+        size_t MULTI_STEPS = 24;
 
-    size_t STEPS = 50;
-    size_t MULTI_STEPS = 5;
+        arma::uvec time_lags;
+        arma::vec lambdas;
 
-    arma::uvec time_lags;
-    arma::vec lambdas;
-  
+        size_t maxiter = 40;
 
-    double eta = 0.1;
-    size_t maxiter = 600;
+        time_lags << 1 << 2 << 3 << 4 << 5 << 6 << 7 << 8 << 9 << 10 << 11 << 12 << 13 << 14 << 15 << 16 << 17 << 18 << 19 << 20 << 21 << 22 << 23 << 24 << 168 << 169 << 170 << 171 << 172 << 173 << 174 << 175 << 176 << 177 << 178 << 179 << 180 << 181 << 182 << 183 << 184 << 185 << 186 << 187 << 188 << 189 << 190 << 191;
+        lambdas << 0.5 << 125 << 2;
+        size_t RANK = 60;
 
-    time_lags << 1 << 2 << 3 << 4 << 5 << 6 << 7 << 8 << 9 << 10;
-    lambdas << 0.75 << 0.75 << 0.75;
-    size_t RANK = 21;
+        arma::mat data;
+        data.load(input);
+        data = data.t();
 
-    arma::mat data;
-    data.load(input);
-    data = data.t();
-    // data = data.rows(0,1);
-    // data = data.cols(0,100 - 1);
+        std::cout << "data = (" << data.n_rows << "," << data.n_cols << ")" << std::endl;
 
-    std::cout << "data = (" << data.n_rows << "," << data.n_cols << ")" << std::endl;
-    
-    arma::mat pred = TRMF::multi_pred(data, data, time_lags, RANK, lambdas, eta, maxiter, STEPS, MULTI_STEPS);
-    std::cout << "pred = (" << pred.n_rows << "," << pred.n_cols << ")" << std::endl;
+        std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+        arma::mat pred = TRMF::multi_pred(data, data, time_lags, RANK, lambdas, eta, maxiter, STEPS, MULTI_STEPS);
+        std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
 
-    pred.save(output + "TRMF/50forecast5by5cpp" + ".txt", arma::raw_ascii);
+        std::cout << "elapsed time = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() / 1000000.0 << "[s]" << std::endl;
+        std::cout << "pred = (" << pred.n_rows << "," << pred.n_cols << ")" << std::endl;
 
+        pred.save(output + "TRMF/elecCPP40iterETA"+ std::to_string(eta) + ".txt", arma::raw_ascii);
+    }
 }
 
 int main()

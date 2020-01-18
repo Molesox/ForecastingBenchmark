@@ -1,14 +1,17 @@
 #include "LSRN/LatentSpaceRN.h"
 
 LatentSpaceRN::LatentSpaceRN(arma::vec &data, size_t steps, double gamma, double lambda, arma::mat Wprox, size_t d,
-                             size_t khop)
-        : m_data(data), STEPS(steps), m_gamma(gamma), m_lambda(lambda), m_W(Wprox), m_khop(khop)
+                             size_t khop):
+                             m_data(data),
+                             STEPS(steps),
+                             m_gamma(gamma),
+                             m_lambda(lambda),
+                             m_W(Wprox),
+                             m_khop(khop)
 {
-
     m_d = d;
     m_B = arma::mat(m_d, m_d, arma::fill::randu);
     m_A = arma::mat(m_d, m_d, arma::fill::randu);
-
 
     m_iter = data.n_rows / STEPS;
     for (size_t i = 0; i < m_iter; i++)
@@ -24,9 +27,9 @@ LatentSpaceRN::LatentSpaceRN(arma::vec &data, size_t steps, double gamma, double
         }
     }
 
-    W();
+    //W();
     m_D = arma::mat(STEPS + 1, STEPS + 1, arma::fill::zeros);
-    
+
     for (size_t i = 0; i < m_W.n_rows; i++)
     {
         for (size_t j = 0; j < m_W.n_cols; j++)
@@ -34,8 +37,6 @@ LatentSpaceRN::LatentSpaceRN(arma::vec &data, size_t steps, double gamma, double
             m_D(i, i) += m_W(i, j);
         }
     }
-
-
 }
 
 void LatentSpaceRN::do_globalLearning()
@@ -59,11 +60,13 @@ void LatentSpaceRN::do_globalLearning()
             {
                 nomi = (mv_Y[t] % mv_G[t]) * (mv_U[t] * m_B.t() + mv_U[t] * m_B) + m_lambda * m_W * mv_U[t] +
                        m_gamma * (mv_U[t + 1] * m_A.t());
-            } else if (t == m_iter - 1)
+            }
+            else if (t == m_iter - 1)
             {
                 nomi = (mv_Y[t] % mv_G[t]) * (mv_U[t] * m_B.t() + mv_U[t] * m_B) + m_lambda * m_W * mv_U[t] +
                        m_gamma * (mv_U[t - 1] * m_A);
-            } else
+            }
+            else
             {
                 nomi = (mv_Y[t] % mv_G[t]) * (mv_U[t] * m_B.t() + mv_U[t] * m_B) + m_lambda * m_W * mv_U[t] +
                        m_gamma * (mv_U[t - 1] * m_A + mv_U[t + 1] * m_A.t());
@@ -94,8 +97,11 @@ void LatentSpaceRN::do_globalLearning()
 
         m_B = m_B % (nomiB / denoB);
         m_A = m_A % (nomiA / denoA);
+
         maxIter++;
+
     } while (not converge() and maxIter < 200);
+
     if (maxIter > 198)
     {
         std::cerr << "max iter = " << maxIter << std::endl;
@@ -120,7 +126,7 @@ bool LatentSpaceRN::converge()
 void LatentSpaceRN::W()
 {
     m_W = arma::mat(STEPS + 1, STEPS + 1, arma::fill::zeros);
-/*
+    /*
     arma::vec vadd(STEPS, arma::fill::zeros);
     arma::rowvec radd(STEPS + 1, arma::fill::zeros);
 
@@ -144,7 +150,6 @@ void LatentSpaceRN::W()
     for (size_t i = 1; i <= m_khop; ++i)
     {
         m_W += armaPow(mv_Y[0], i);
-
     }
 }
 
@@ -161,7 +166,6 @@ arma::mat LatentSpaceRN::armaPow(arma::mat const &toP, size_t n)
     {
 
         result *= toP;
-
     }
 
     return result;

@@ -149,19 +149,50 @@ static void TEST_LSRN()
 
 static void TEST_MAME()
 {
+    input = "/mnt/c/Users/Daniel/Desktop/FBthesis/mame/combinedTS.txt";
+    output = "../IO/outputs/MAME/";
+    int N = 6;
+    int M = 400;
+    size_t PRED = 12;
 
-    arma::vec test(90, arma::fill::ones);
-    for (size_t i = 0; i < 90; ++i)
-    {
-        test(i) = i;
-    }
-    MAME_svd mame = MAME_svd(test, 5, 0);
+    arma::vec data;
+    arma::vec train;
+    arma::vec test;
 
-    //  mame.m_M.print();
-    std::cout << "-------------" << std::endl;
+    data.load(input);
+    train = data.rows(0, data.n_rows - PRED - 1);
+    test = data.rows(data.n_rows - PRED, data.n_rows - 1);
 
+    std::cout << "train = (" << train.n_rows << "," << train.n_cols << ")" << std::endl;
+    std::cout << "data = (" << data.n_rows << "," << data.n_cols << ")" << std::endl;
+
+    MAME_svd mame = MAME_svd(train, N, 2);
     mame.fit();
-    std::cout << "pred = " << mame.predict(test.rows(86, 89)) << std::endl;
+
+    arma::vec pred(PRED, arma::fill::zeros);
+    arma::vec pastvals(N - 1, arma::fill::zeros);
+    size_t j;
+    for (size_t i = 0; i < PRED; i++)
+    {
+        pastvals.zeros();
+        j = 0;
+
+        if (i < N - 1)
+        {
+            while (j < N - 1 - i)
+            {
+                pastvals(j) = data(train.n_rows - (N - 1 - i) + j);
+                j += 1;
+            }
+        }
+        if (j < N - 1)
+        {
+            size_t calc = (i - (i - (size_t)(N - 1) + j));
+            pastvals.rows(j, j + calc - 1) = test.rows(i - (size_t)(N - 1) + j, i - 1);
+        }
+        pred(i) = mame.predict(pastvals);
+    }
+    pred.save(output + "mamecpp.txt", arma::raw_ascii);
 }
 
 static void TEST_TRMF()
@@ -227,7 +258,7 @@ static void TEST_TRMF2()
 
 static void TEST_TRMF3()
 {
-    double etas[5] = {0.01, 0.1, 0.2, 0.3, 0.4};
+    double etas[5] = {0.3};
     for (auto const &eta : etas)
     {
         size_t STEPS = 168;
@@ -239,7 +270,7 @@ static void TEST_TRMF3()
         size_t maxiter = 40;
 
         time_lags << 1 << 2 << 3 << 4 << 5 << 6 << 7 << 8 << 9 << 10 << 11 << 12 << 13 << 14 << 15 << 16 << 17 << 18 << 19 << 20 << 21 << 22 << 23 << 24 << 168 << 169 << 170 << 171 << 172 << 173 << 174 << 175 << 176 << 177 << 178 << 179 << 180 << 181 << 182 << 183 << 184 << 185 << 186 << 187 << 188 << 189 << 190 << 191;
-        lambdas << 0.5 << 125 << 2;
+        lambdas << 0.5 << 125.0 << 2.0;
         size_t RANK = 60;
 
         arma::mat data;
@@ -255,12 +286,13 @@ static void TEST_TRMF3()
         std::cout << "elapsed time = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() / 1000000.0 << "[s]" << std::endl;
         std::cout << "pred = (" << pred.n_rows << "," << pred.n_cols << ")" << std::endl;
 
-        pred.save(output + "TRMF/elecCPP40iterETA"+ std::to_string(eta) + ".txt", arma::raw_ascii);
+        pred.save(output + "TRMF/newElecCPP40iterETA" + std::to_string(eta) + ".txt", arma::raw_ascii);
     }
 }
 
 int main()
 {
+
     //ss
 
     //  arma::vec time_lags;
@@ -271,7 +303,7 @@ int main()
     //  uvec index = linspace<uvec>(0, 4-1, 4);
     //  std::cout<< index <<std::endl;
 
-    TEST_TRMF3();
+    TEST_MAME();
 
     return 0;
 }

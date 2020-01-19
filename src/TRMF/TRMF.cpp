@@ -62,8 +62,8 @@ TRMF::TRMF(mat &data, mat &idmat, arma::uvec const &lags, size_t rank, arma::vec
 
 void TRMF::fit()
 {
-    m_binary = mat(m_id.n_rows, m_id.n_cols, arma::fill::ones);
-    // m_binary.elem(arma::find(m_id != 0)).ones();
+    m_binary = mat(m_id.n_rows, m_id.n_cols, arma::fill::zeros);
+    m_binary.elem(arma::find(m_id != 0)).ones();
 
     for (size_t it = 0; it < m_maxiter; ++it)
     {
@@ -198,11 +198,14 @@ arma::mat TRMF::multi_pred(mat &data, mat &idmat, arma::uvec const &lags, size_t
     size_t dim2 = id0.n_cols;
 
     mat pred(dim1, pred_steps, arma::fill::zeros);
-    NormalTransform nt(id0);
-    id0 = nt.preprocess(id0);
+    // NormalTransform nt(id0);
+    // id0 = nt.preprocess(id0);
 
     TRMF trmf(data0, id0, lags, rank, lambdas, eta, maxiter);
+    std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
     trmf.fit();
+    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+    std::cout << "elapsed time = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() / 1000000.0 << "[s]" << std::endl;
 
     mat X0 = mat(dim2 + multi_steps, rank, arma::fill::zeros);
     X0.rows(0, dim2 - 1) = trmf.m_X.rows(0, dim2 - 1);
@@ -227,7 +230,10 @@ arma::mat TRMF::multi_pred(mat &data, mat &idmat, arma::uvec const &lags, size_t
         trmf.m_data = data.cols(0, start_time + t * multi_steps - 1);
         trmf.m_id = idmat.cols(0, start_time + t * multi_steps - 1);
         // trmf.m_id = nt.preprocess(trmf.m_id);
+        std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
         trmf.fit();
+        std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+        std::cout << "elapsed time = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() / 1000000.0 << "[s]" << std::endl;
 
         dim1 = trmf.m_id.n_rows;
         dim2 = trmf.m_id.n_cols;
@@ -247,7 +253,7 @@ arma::mat TRMF::multi_pred(mat &data, mat &idmat, arma::uvec const &lags, size_t
         std::cout << "." << std::flush;
     }
     std::cout << std::endl;
-    pred = nt.posprocess(pred);
+    // pred = nt.posprocess(pred);
     return pred;
 }
 arma::mat TRMF::kr_prod(arma::mat const &A, arma::mat const &B)

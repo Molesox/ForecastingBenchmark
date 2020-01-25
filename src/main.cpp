@@ -21,7 +21,7 @@
 
 #include <chrono>
 
-std::string input = "../IO/datasets/electricity.txt";
+std::string input = "../IO/datasets/trmfSynt.txt";
 std::string output = "../IO/outputs/";
 
 static void TEST_OMF()
@@ -151,9 +151,9 @@ static void TEST_MAME()
 {
     input = "/mnt/c/Users/Daniel/Desktop/FBthesis/mame/combinedTS.txt";
     output = "../IO/outputs/MAME/";
-    int N = 6;
+    int N = 50;
     int M = 400;
-    size_t PRED = 12;
+    size_t PRED = 2000;
 
     arma::vec data;
     arma::vec train;
@@ -197,97 +197,22 @@ static void TEST_MAME()
 
 static void TEST_TRMF()
 {
-    int STEPS = 10;
-
-    arma::uvec time_lags;
-    arma::vec lambdas;
-    arma::mat data;
-
-    double eta = 0.1;
-    size_t maxiter = 100;
-
-    time_lags << 1 << 2;
-    lambdas << 0.75 << 0.75 << 0.75;
-
-    data = arma::mat(5, 100, arma::fill::ones);
-    data = data.cols(0, data.n_cols - (STEPS + 1));
-    std::cout << "data = (" << data.n_rows << "," << data.n_cols << ")" << std::endl;
-    std::cout << data << std::endl;
-
-    TRMF trmf = TRMF(data, data, time_lags, 5, lambdas, eta, maxiter);
-    trmf.fit();
-
-    arma::mat X = trmf.m_X;
-    arma::mat W = trmf.m_W;
-    arma::mat Theta = trmf.m_T;
-
-    std::cout << "X = (" << X.n_rows << "," << X.n_cols << ")" << std::endl;
-    std::cout << X << std::endl;
-    std::cout << "W = (" << W.n_rows << "," << W.n_cols << ")" << std::endl;
-    std::cout << W << std::endl;
-    std::cout << "Theta = (" << Theta.n_rows << "," << Theta.n_cols << ")" << std::endl;
-    std::cout << Theta << std::endl;
-    std::cout << "result" << std::endl;
-    arma::mat temp = (W * X.t());
-    std::cout << "temp = (" << temp.n_rows << "," << temp.n_cols << ")" << std::endl;
-
-    std::cout << temp.cols(data.n_cols - (STEPS + 1), (data.n_cols) - 1) << std::endl;
-}
-
-static void TEST_TRMF2()
-{
-    int STEPS = 10;
-
-    arma::uvec time_lags;
-    arma::vec lambdas;
-    arma::mat data;
-
-    double eta = 0.09;
-    size_t maxiter = 500;
-
-    time_lags << 1 << 2;
-    lambdas << 0.75 << 0.75 << 0.75;
-
-    data.load(input);
-    data = data.t();
-
-    arma::mat pred = TRMF::one_pred(data, data, time_lags, 10, lambdas, eta, maxiter, STEPS, 20);
-    std::cout << "pred = (" << pred.n_rows << "," << pred.n_cols << ")" << std::endl;
-    std::cout << pred << std::endl;
-}
-
-static void TEST_TRMF3()
-{
-    double etas[5] = {0.3};
-    for (auto const &eta : etas)
-    {
-        size_t STEPS = 168;
-        size_t MULTI_STEPS = 24;
-
-        arma::uvec time_lags;
-        arma::vec lambdas;
-
-        size_t maxiter = 40;
-
-        time_lags << 1 << 2 << 3 << 4 << 5 << 6 << 7 << 8 << 9 << 10 << 11 << 12 << 13 << 14 << 15 << 16 << 17 << 18 << 19 << 20 << 21 << 22 << 23 << 24 << 168 << 169 << 170 << 171 << 172 << 173 << 174 << 175 << 176 << 177 << 178 << 179 << 180 << 181 << 182 << 183 << 184 << 185 << 186 << 187 << 188 << 189 << 190 << 191;
-        lambdas << 0.5 << 125.0 << 2.0;
-        size_t RANK = 60;
-
-        arma::mat data;
-        data.load(input);
-        data = data.t();
-
-        std::cout << "data = (" << data.n_rows << "," << data.n_cols << ")" << std::endl;
-
-        std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
-        arma::mat pred = TRMF::multi_pred(data, data, time_lags, RANK, lambdas, eta, maxiter, STEPS, MULTI_STEPS);
-        std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-
-        std::cout << "elapsed time = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() / 1000000.0 << "[s]" << std::endl;
-        std::cout << "pred = (" << pred.n_rows << "," << pred.n_cols << ")" << std::endl;
-
-        pred.save(output + "TRMF/newElecCPP40iterETA" + std::to_string(eta) + ".txt", arma::raw_ascii);
+    arma::mat Y(100, 20, arma::fill::ones);
+    arma::mat Yt(20, 100, arma::fill::ones);
+    arma::uvec lagset(5, arma::fill::ones);
+    int i = 0;
+    for(auto& el:lagset){
+        el = i+1;
     }
+    size_t k = 5;
+    trmf_prob_t prob(Y, Yt, lagset, k);
+    trmf_param_t param = trmf_param_t();
+
+    arma::mat W, H, lag_val;
+    trmf_initialization(prob, param, W, H, lag_val);
+    check_dimension(prob, param, W, H, lag_val);
+
+    trmf_train(prob, param, W, H, lag_val);
 }
 
 int main()
@@ -303,7 +228,11 @@ int main()
     //  uvec index = linspace<uvec>(0, 4-1, 4);
     //  std::cout<< index <<std::endl;
 
-    TEST_MAME();
+       TEST_TRMF();
+
+    
+    
+    
 
     return 0;
 }

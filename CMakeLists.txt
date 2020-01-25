@@ -10,7 +10,7 @@ include_directories(${HDF5_INCLUDE_DIRS})
 include_directories(include)
 include_directories(src)
 
-set(CMAKE_CXX_FLAGS "-O3  -DARMA_DONT_USE_WRAPPER -DARMA_USE_ARPACK -DARMA_USE_HDF5")
+set(CMAKE_CXX_FLAGS "-O3 -fopenmp -DARMA_DONT_USE_WRAPPER -DARMA_USE_ARPACK -DARMA_USE_HDF5")
 
 add_executable(Algorithms
         include/OMF/FixedPenalty.h
@@ -25,6 +25,8 @@ add_executable(Algorithms
         include/OMF/ZeroTolerance.h
         include/OATS/TemplateOATS.h
         include/TRMF/TRMF.h
+        include/TRMF/tron.h
+        src/TRMF/tron.cpp
         src/TRMF/TRMF.cpp
         src/OMF/FixedPenalty.cpp
         src/OMF/FixedTolerance.cpp

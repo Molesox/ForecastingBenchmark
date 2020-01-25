@@ -1,267 +1,402 @@
 #include <../include/TRMF/TRMF.h>
 
 using arma::mat;
+using arma::uvec;
 using arma::vec;
 
-NormalTransform::NormalTransform(mat &Y)
+void logger(std::string text)
 {
-
-    m_mean = arma::mean(Y, 1).t();
-    m_std = arma::stddev(Y, 0, 1).t();
-
-    m_std.elem(arma::find(m_std == 0)).ones();
-
-    m_a = 1. / m_std;
-    m_b = -m_a % m_mean;
-}
-mat NormalTransform::preprocess(mat &Y)
-{
-
-    mat temp(arma::size(Y), arma::fill::zeros);
-    temp.each_col() += m_b.t();
-
-    return Y;
-    // return ( arma::diagmat(m_a) * Y   + temp);
-}
-
-mat NormalTransform::posprocess(mat &Y)
-{
-    mat temp(arma::size(Y), arma::fill::zeros);
-    temp.each_col() += m_b.t();
-    mat temp2(arma::size(Y), arma::fill::zeros);
-    temp2.each_col() += m_a.t();
-    return Y;
-    // return (Y -temp) / temp2;
-}
-
-TRMF::TRMF(mat &data, mat &idmat, arma::uvec const &lags, size_t rank, arma::vec const &lambda, double eta,
-           size_t maxiter) : m_data(data),
-                             m_id(idmat),
-                             m_lags(lags),
-                             m_lambdas(lambda),
-                             m_rank(rank),
-                             m_eta(eta),
-                             m_maxiter(maxiter)
-{
-
-    m_nb_lags = m_lags.n_rows;
-
-    //Initialisation
-    m_W = 0.1 * mat(m_data.n_rows, m_rank, arma::fill::randn); //random
-    m_X = 0.1 * mat(m_data.n_cols, m_rank, arma::fill::randn); //random
-    m_T = 0.1 * mat(m_nb_lags, m_rank, arma::fill::randn);     //random
-
-    m_Mt = mat(m_rank, m_rank, arma::fill::zeros);
-    m_Nt = vec(m_rank, arma::fill::zeros);
-
-    m_Pt = mat(m_rank, m_rank, arma::fill::zeros);
-    m_Qt = arma::rowvec(m_rank, arma::fill::zeros);
-
-    m_rank_eye = mat(m_rank, m_rank, arma::fill::eye);
-}
-
-void TRMF::fit()
-{
-    m_binary = mat(m_id.n_rows, m_id.n_cols, arma::fill::zeros);
-    m_binary.elem(arma::find(m_id != 0)).ones();
-
-    for (size_t it = 0; it < m_maxiter; ++it)
+    if (VERBOSE)
     {
-        mat var1 = m_X.t();
-        mat var2 = kr_prod(var1, var1);
-        mat var3 = var2 * m_binary.t();
-        mat var4 = var1 * m_id.t();
+        std::cout << text << std::endl;
+    }
+}
 
-        arma::uvec index;
-        mat theta0;
-        mat inv;
+struct l2r_ls_fY_IX_chol : public solver_t
+{ // {{{
+    const mat &Y;
+    const mat &H;
+    mat YH;
+    mat HTH;
+    mat kk_buf;
+    double trYTY;
+    double lambda;
+    const size_t m, k;
+    bool done_init;
 
-        for (int i = 0; i < m_id.n_rows; ++i)
+    l2r_ls_fY_IX_chol(const mat &Y, const mat &H, double lambda) : Y(Y), H(H), trYTY(0), lambda(lambda), m(Y.n_rows), k(H.n_cols), done_init(false)
+    {
+
+        YH = mat(m, k);
+        HTH = mat(k, k);
+        std::cout << "YH = (" << YH.n_rows << "," << YH.n_cols << ")" << std::endl;
+        logger("l2r_ls_fY_IX_chol::constructor()");
+
+        trYTY = arma::dot(Y, Y);
+    }
+
+    void init_prob()
+    {
+        logger("l2r_ls_fY_IX_chol::init_prob()");
+
+        YH = Y * H;
+        HTH = H.t() * H;
+
+        for (size_t t = 0; t < k; t++)
         {
-            mat v3 = var3.col(i);
-            v3.reshape(m_rank, m_rank);
-            m_W.row(i) = arma::solve((v3 + m_lambdas(0) * m_rank_eye), var4.col(i), arma::solve_opts::fast).t();
+
+            HTH.at(t, t) += lambda;
         }
 
-        var1 = m_W.t();
-        var2 = kr_prod(var1, var1);
-        var3 = var2 * m_binary;
-        var4 = var1 * m_id;
+        done_init = true;
+    }
 
-        for (size_t t = 0; t < m_id.n_cols; ++t)
+    void solve(arma::mat &W)
+    {
+        logger("l2r_ls_fY_IX_chol::solve()");
+
+        if (!done_init)
         {
-            m_Mt.zeros();
-            m_Nt.zeros();
+            init_prob();
+        }
+        W = YH;
+        arma::mat Res = arma::solve(HTH, W.t());
+        W = Res.t();
+        // HTH will be changed to a cholesky factorization after the above call.
+        // Thus we need to flip done_init to false again
+        done_init = false;
+    }
 
-            if (t < max(m_lags))
+    double solver_fun(arma::mat W)
+    {
+        logger("l2r_ls_fY_IX_chol::fun()");
+        if (!done_init)
+        {
+            init_prob();
+        }
+        //TODO::reshape needed ?
+
+        W.reshape(m, k);
+        double obj = trYTY;
+        kk_buf = W.t() * W;
+
+        obj += arma::dot(kk_buf, HTH);
+        obj -= 2.0 * arma::dot(W, YH);
+        obj *= 0.5;
+        return obj;
+    }
+}; // }}}
+
+arr_solver::arr_solver(arr_prob_t *prob, arr_param_t *param) : prob(prob),
+                                                               param(param),
+                                                               tron_obj(NULL),
+                                                               solver_obj(NULL),
+                                                               done_init(false)
+{
+    if (prob->lag_set != NULL)
+    {
+        logger("setting tron solver tron_obj");
+        logger("setting arr_ls_fY_IX fun_obj");
+
+        fun_obj = new arr_ls_fY_IX(prob, param);
+        tron_obj = new tron(*fun_obj, param->eps, param->eps_cg, param->max_tron_iter, param->max_cg_iter);
+        solver_obj = NULL;
+    }
+    else
+    {
+        logger("setting chol solver_obj");
+
+        fun_obj = NULL;
+        tron_obj = NULL;
+        solver_obj = new l2r_ls_fY_IX_chol(prob->Y, prob->H, param->lambdaI);
+    }
+}
+
+double arr_base_IX::fun(mat &W)
+{
+    logger("arr_base_IX:: fun()");
+
+    // W.reshape(m, k);
+    double f = 0;
+    logger("arr_base_IX:reshape() done.");
+
+    if (lambdaI > 0)
+    {
+        f += 0.5 * lambdaI * arma::dot(W, W);
+    }
+    if (prob->lag_set != NULL and lambdaAR > 0)
+    {
+        const uvec &lag_set = (*(prob->lag_set));
+        const mat &lag_val = *(prob->lag_val);
+        size_t midx = lag_set.back(); // supposed to be the max index in lag_set
+        double AR_val = 0;
+
+#pragma omp parallel for reduction(+ \
+                                   : AR_val)
+        for (size_t i = midx; i < m; i++)
+        {
+            double tmp_val = 0;
+            for (size_t t = 0; t < k; t++)
             {
-                m_Pt.zeros();
-                m_Qt.zeros();
-            }
-            else
-            {
-                m_Pt.eye();
-                m_Qt = arma::sum(m_T % m_X.rows(t - m_lags), 0);
-            }
-            if (t < m_id.n_cols - min(m_lags))
-            {
-                if (t >= max(m_lags) and t < m_id.n_cols - max(m_lags))
+                double residual = W.at(i, t);
+                for (size_t l = 0; l < lag_set.n_rows; l++)
                 {
-                    index = arma::linspace<arma::uvec>(0, m_nb_lags - 1, m_nb_lags);
+                    size_t lag = lag_set[l];
+                    residual -= lag_val.at(l, t) * W.at(i - lag, t);
                 }
-                else
-                {
-                    index = arma::find(((t + m_lags) >= arma::max(m_lags)) and (t + m_lags) < m_id.n_cols);
-                }
-                for (const auto &k : index)
-                {
-                    theta0 = m_T;
-                    theta0.row(k).zeros();
-                    m_Mt = m_Mt + arma::diagmat(arma::square(m_T.row(k)));
-                    mat temp = (m_X.row(t + m_lags(k)) - arma::sum(theta0 % m_X.rows(t + m_lags(k) - m_lags)));
-                    m_Nt = m_Nt + (m_T.row(k) % temp).t();
-                }
-
-                inv = (arma::reshape(var3.col(t), m_rank, m_rank) + m_lambdas(1) * (m_Pt + m_Mt + m_eta * m_rank_eye));
-                m_X.row(t) = arma::solve(inv, (var4.col(t) + m_lambdas(1) * (m_Qt.t() + m_Nt)), arma::solve_opts::fast).t();
+                tmp_val += residual * residual;
             }
-            else
-            {
-                inv = (arma::reshape(var3.col(t), m_rank, m_rank) + m_lambdas(1) * (m_Pt + m_eta * m_rank_eye));
-                m_X.row(t) = arma::solve(inv, (var4.col(t) + m_Qt.t()), arma::solve_opts::fast).t();
-            }
+            AR_val += tmp_val;
         }
-        for (size_t k = 0; k < m_nb_lags; k++)
+        f += 0.5 * lambdaAR * AR_val;
+    }
+    logger("arr_base_IX:: fun() done.");
+    // W = W.as_col();
+    return f;
+}
+
+void arr_base_IX::grad(mat &W, mat &G)
+{
+    logger("arr_base_IX:: grad()");
+
+    W.reshape(m, k);
+    G = lambdaI * W;
+
+    if (prob->lag_set != NULL and lambdaAR > 0)
+    {
+        const uvec &lag_set = *(prob->lag_set);
+        const mat &lag_val = *(prob->lag_val);
+        size_t midx = lag_set.back(); // supposed to be the max index in lag_set
+#pragma omp parallel for
+        for (size_t t = 0; t < k; t++)
         {
-            var1 = m_X.rows(arma::max(m_lags) - m_lags(k), m_id.n_cols - m_lags(k) - 1);
-            var2 = arma::diagmat(arma::sum(var1 % var1)) + (m_lambdas(2) / m_lambdas(1)) * m_rank_eye;
-            var3 = vec(m_rank, arma::fill::zeros);
-
-            for (size_t t = (arma::max(m_lags) - m_lags(k)); t < m_id.n_cols - m_lags(k); t++)
+            for (size_t i = midx; i < m; i++)
             {
-                var3 = var3 + (m_X.row(t) % (m_X.row(t + m_lags(k)) - arma::sum(m_T % m_X.rows(t + m_lags(k) - m_lags)) + (m_T.row(k) % m_X.row(t)))).t();
+                double residual = W.at(i, t);
+                for (size_t l = 0; l < lag_set.n_rows; l++)
+                {
+                    size_t lag = lag_set[l];
+                    residual -= lag_val.at(l, t) * W.at(i - lag, t);
+                }
+                G.at(i, t) += lambdaAR * residual;
+                for (size_t l = 0; l < lag_set.size(); l++)
+                {
+                    size_t lag = lag_set[l];
+                    G.at(i - lag, t) -= lambdaAR * residual * lag_val.at(l, t);
+                }
             }
-            m_T.row(k) = arma::solve(var2, var3, arma::solve_opts::fast).t();
         }
     }
+    W = W.as_col();
+    G = G.as_col();
+
+    logger("arr_base_IX:: grad() done.");
 }
-
-arma::mat TRMF::one_pred(mat &data, mat &idmat, arma::uvec const &lags, size_t rank, vec const &lambdas, double eta, size_t maxiter, size_t pred_steps, size_t back_steps)
+void arr_base_IX::Hv(mat &S, mat &Hs)
 {
-    size_t start_time = data.n_cols - pred_steps;
+    logger("arr_base_IX:: Hv()");
 
-    mat data0 = data.cols(0, start_time - 1);
-    mat id0 = idmat.cols(0, start_time - 1);
+    S.reshape(m, k);
 
-    size_t dim1 = id0.n_rows;
-    size_t dim2 = id0.n_cols;
+    Hs = lambdaI * S;
 
-    TRMF trmf(data0, id0, lags, rank, lambdas, eta, maxiter);
-    trmf.fit();
-
-    mat X0 = mat(dim2 + 1, rank, arma::fill::zeros);
-    X0.rows(0, dim2 - 1) = trmf.m_X.rows(0, dim2 - 1);
-    X0.row(dim2) = arma::sum(trmf.m_T % X0.rows(dim2 - lags));
-
-    trmf.m_X = X0.rows(X0.n_rows - back_steps, X0.n_rows - 1);
-
-    mat pred_mat = mat(dim1, pred_steps, arma::fill::zeros);
-    pred_mat.col(0) = trmf.m_W * X0.row(dim2).t();
-
-    trmf.m_maxiter = 40;
-    for (size_t t = 1; t < pred_steps; t++)
+    if (lambdaAR > 0)
     {
-        trmf.m_data = data.cols(start_time - back_steps + t, start_time + t - 1);
-        trmf.m_id = idmat.cols(start_time - back_steps + t, start_time + t - 1);
-
-        trmf.fit();
-
-        X0.zeros(back_steps + 1, rank);
-        X0.rows(0, back_steps - 1) = trmf.m_X.rows(0, back_steps - 1);
-        X0.row(back_steps) = arma::sum(trmf.m_T % X0.rows(back_steps - lags));
-
-        trmf.m_X = X0.rows(1, back_steps);
-        pred_mat.col(t) = trmf.m_W * X0.row(back_steps).t();
-    }
-    return pred_mat;
-}
-
-arma::mat TRMF::multi_pred(mat &data, mat &idmat, arma::uvec const &lags, size_t rank,
-                           vec &lambdas, double eta, size_t maxiter, size_t pred_steps, size_t multi_steps)
-{
-    size_t start_time = data.n_cols - pred_steps;
-
-    mat data0 = data.cols(0, start_time - 1);
-    mat id0 = idmat.cols(0, start_time - 1);
-
-    size_t dim1 = id0.n_rows;
-    size_t dim2 = id0.n_cols;
-
-    mat pred(dim1, pred_steps, arma::fill::zeros);
-    // NormalTransform nt(id0);
-    // id0 = nt.preprocess(id0);
-
-    TRMF trmf(data0, id0, lags, rank, lambdas, eta, maxiter);
-    std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
-    trmf.fit();
-    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-    std::cout << "elapsed time = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() / 1000000.0 << "[s]" << std::endl;
-
-    mat X0 = mat(dim2 + multi_steps, rank, arma::fill::zeros);
-    X0.rows(0, dim2 - 1) = trmf.m_X.rows(0, dim2 - 1);
-
-    for (size_t t0 = 0; t0 < multi_steps; t0++)
-    {
-        X0.row(dim2 + t0) = arma::sum(trmf.m_T % X0.rows(dim2 + t0 - lags));
-    }
-
-    trmf.m_X = X0;
-    mat temp = trmf.m_W * X0.rows(dim2, dim2 + multi_steps - 1).t();
-    pred.cols(0, multi_steps - 1) = temp.cols(temp.n_cols - multi_steps, temp.n_cols - 1);
-
-    // mat pos = pred.cols(0, multi_steps - 1);
-    // pred.cols(0, multi_steps - 1) =  nt.posprocess(pos);
-
-    std::cout << "main fit done." << std::endl;
-
-    trmf.m_maxiter = 40;
-    for (size_t t = 1; t < (size_t)(pred_steps / multi_steps); t++)
-    {
-        trmf.m_data = data.cols(0, start_time + t * multi_steps - 1);
-        trmf.m_id = idmat.cols(0, start_time + t * multi_steps - 1);
-        // trmf.m_id = nt.preprocess(trmf.m_id);
-        std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
-        trmf.fit();
-        std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
-        std::cout << "elapsed time = " << std::chrono::duration_cast<std::chrono::microseconds>(end - begin).count() / 1000000.0 << "[s]" << std::endl;
-
-        dim1 = trmf.m_id.n_rows;
-        dim2 = trmf.m_id.n_cols;
-        X0.zeros(dim2 + multi_steps, rank);
-        X0.rows(0, dim2 - 1) = trmf.m_X.rows(0, dim2 - 1);
-
-        for (size_t t0 = 0; t0 < multi_steps; t0++)
+        const uvec &lag_set = *(prob->lag_set);
+        const mat &lag_val = *(prob->lag_val);
+        size_t midx = lag_set.back();
+#pragma omp parallel for
+        for (size_t t = 0; t < k; t++)
         {
-            X0.row(dim2 + t0) = arma::sum(trmf.m_T % X0.rows(dim2 + t0 - lags));
+            for (size_t i = midx; i < m; i++)
+            {
+                double residual = S.at(i, t);
+                for (size_t l = 0; l < lag_set.size(); l++)
+                {
+                    size_t lag = lag_set[l];
+                    residual -= lag_val.at(l, t) * S.at(i - lag, t);
+                }
+                Hs.at(i, t) += lambdaAR * residual;
+                for (size_t l = 0; l < lag_set.size(); l++)
+                {
+                    size_t lag = lag_set[l];
+                    Hs.at(i - lag, t) -= lambdaAR * residual * lag_val.at(l, t);
+                }
+            }
         }
-        trmf.m_X = X0;
-        mat temp = trmf.m_W * X0.rows(dim2, dim2 + multi_steps - 1).t();
-
-        pred.cols(t * multi_steps, (t + 1) * multi_steps - 1) = temp.cols(temp.n_cols - multi_steps, temp.n_cols - 1);
-        // mat pos = pred.cols(t * multi_steps, (t + 1) * multi_steps - 1);
-        // pred.cols(t * multi_steps, (t + 1) * multi_steps - 1) =  nt.posprocess(pos);
-        std::cout << "." << std::flush;
     }
-    std::cout << std::endl;
-    // pred = nt.posprocess(pred);
-    return pred;
+    S = S.as_col();
+    Hs = Hs.as_col();
+    logger("arr_base_IX:: Hv() done.");
 }
-arma::mat TRMF::kr_prod(arma::mat const &A, arma::mat const &B)
+double arr_ls_fY_IX::fun(mat &W)
 {
-    mat result = mat(A.n_rows * B.n_rows, B.n_cols, arma::fill::zeros);
-    for (int i = 0; i < A.n_cols; ++i)
+    logger("arr_ls_fY_IX:: fun()");
+    W.reshape(m, k);
+    double f = base_t::fun(W);
+
+    f += 0.5 * trYTY;
+
+    WTW = W.t() * W;
+
+    f += 0.5 * arma::dot(WTW, HTH);
+    f -= arma::dot(YH, W);
+    W = W.as_col();
+    logger("arr_ls_fY_IX:: fun() done.");
+
+    return f;
+}
+void arr_ls_fY_IX::grad(mat &W, mat &G)
+{
+    logger("arr_ls_fY_IX:: grad()");
+
+    base_t::grad(W, G);
+
+    W.reshape(m, k);
+    G.reshape(m, k); // view constructor
+
+    G += -YH + W * HTH;
+
+    G = G.as_col();
+
+    W = W.as_col();
+
+    logger("arr_ls_fY_IX:: grad() done");
+}
+void arr_ls_fY_IX::Hv(mat &S, mat &Hs)
+{
+    logger("arr_ls_fY_IX:: Hv()");
+
+    base_t::Hv(S, Hs);
+
+    S.reshape(m, k); // view constructor
+    Hs.reshape(m, k);
+    Hs += S * HTH;
+
+    S = S.as_col();
+    Hs = Hs.as_col();
+    logger("arr_ls_fY_IX:: Hv() done.");
+}
+
+void trmf_train(trmf_prob_t &prob, trmf_param_t &param, mat &W, mat &H, mat &lag_val)
+{
+    uvec &lag_set = (prob.lag_set);
+    mat &Y = (prob.Y);
+    mat &Yt = (prob.Yt); // transpose of Y
+
+    logger("Training trmf");
+
+    if (param.max_tron_iter > 1)
     {
-        result.col(i) = arma::kron(A.col(i), B.col(i));
+        param.max_cg_iter *= param.max_tron_iter;
+        param.max_tron_iter = 1;
     }
-    return result;
+
+    arr_prob_t subprob_W(Y, H, &lag_set, &lag_val);
+    arr_prob_t subprob_H(Yt, W, NULL, NULL);
+
+    arr_solver W_solver(&subprob_W, &param);
+    arr_solver H_solver(&subprob_H, &param);
+
+    l2r_autoregressive_solver LV_solver(W, lag_set, param.lambdaLag);
+
+    for (int iter = 1; iter <= param.max_iter; iter++)
+    {
+
+        if ((iter % param.period_H) == 0)
+        {
+            logger("Init H");
+            H_solver.init_prob();
+            logger("Solving H");
+            H_solver.solve(H);
+            logger("H solved");
+        }
+
+        if ((iter % param.period_W) == 0)
+        {
+            logger("Init W");
+            W_solver.init_prob();
+            logger("Solving W");
+            W_solver.solve(W);
+            // std::cout<< "iter = "<< iter <<std::endl;
+            
+            // std::cout << "W = (" << W.n_rows << "," << W.n_cols << ")" << std::endl;
+            // std::cout << W <<std::endl;
+            
+            logger("W solved");
+        }
+
+        if ((iter % param.period_Lag) == 0)
+        {
+
+            logger("Init theta");
+            LV_solver.init_prob();
+            logger("Solving theta");
+            LV_solver.solve(lag_val);
+            logger("Theta solved");
+        }
+    }
+    std::cout << "H = (" << H.n_rows << "," << H.n_cols << ")" << std::endl;
+    std::cout << H << std::endl;
+    std::cout << "W = (" << W.n_rows << "," << W.n_cols << ")" << std::endl;
+    std::cout << W << std::endl;
+    std::cout << "lag_val = (" << lag_val.n_rows << "," << lag_val.n_cols << ")" << std::endl;
+    std::cout << lag_val << std::endl;
+}
+void trmf_initialization(const trmf_prob_t &prob, const trmf_param_t &param, mat &W, mat &H, mat &lag_val)
+{
+    logger("Trmf initialisation");
+
+    size_t m = prob.m;
+    size_t n = prob.n;
+    size_t k = prob.k;
+
+    W = mat(m, k, arma::fill::ones);
+    H = mat(n, k, arma::fill::ones);
+
+    lag_val = mat(prob.lag_set.n_rows, k, arma::fill::ones);
+
+    std::cout << "W = (" << W.n_rows << "," << W.n_cols << ")" << std::endl;
+    std::cout << "H = (" << H.n_rows << "," << H.n_cols << ")" << std::endl;
+    std::cout << "lag_val = (" << lag_val.n_rows << "," << lag_val.n_cols << ")" << std::endl;
+}
+bool check_dimension(const trmf_prob_t &prob, const trmf_param_t &param, const mat &W, const mat &H, const mat &lag_val)
+{
+    bool pass = true;
+    if (prob.m != W.n_rows)
+    {
+        std::cerr << "[ERR MSG]: Y.rows (" << prob.m << ") != W.rows (" << W.n_rows << ")\n"
+                  << std::endl;
+        pass = false;
+    }
+    if (prob.n != H.n_rows)
+    {
+        std::cerr << "[ERR MSG]: Y.cols (" << prob.n << ") != H.rows (" << H.n_rows << ")\n"
+                  << std::endl;
+        pass = false;
+    }
+    if (W.n_cols != H.n_cols)
+    {
+        std::cerr << "[ERR MSG]: W.cols (" << W.n_cols << ") != H.cols (" << H.n_cols << ")\n"
+                  << std::endl;
+        pass = false;
+    }
+    if (prob.lag_set.size() != lag_val.n_rows)
+    {
+        std::cerr << "[ERR MSG]: lag_set.size(" << prob.lag_set.size() << ") != lag_val.rows(" << lag_val.n_rows << ")\n"
+                  << std::endl;
+        pass = false;
+    }
+    if (W.n_cols != lag_val.n_cols)
+    {
+        std::cerr << "[ERR MSG]: W.cols(" << W.n_cols << ") != lag_val.cols( " << lag_val.n_cols << ")\n"
+                  << std::endl;
+        pass = false;
+    }
+    if (pass)
+    {
+        logger("Check dimension ok.");
+    }
+
+    return pass;
 }

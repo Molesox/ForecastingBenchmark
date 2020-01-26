@@ -27,7 +27,7 @@ tron::~tron()
 void tron::trust_region(mat &w, bool set2zero)
 {
     log1("TRON:: Trust region on ...");
-    // mat temp = w;
+     
     // temp.reshape(100,5);
     // std::cout<< "before fun() = " <<std::endl;
     // std::cout << "w = (" << w.n_rows << "," << w.n_cols << ")" << std::endl;
@@ -69,9 +69,9 @@ void tron::trust_region(mat &w, bool set2zero)
     f = m_fun.fun(w);
     log1("TRON::fun() done.");
 
-    // temp = w;
+    // temp = g;
     // temp.reshape(100,5);
-    // std::cout<< "after fun()" <<std::endl;
+    // std::cout<< "before grad()" <<std::endl;
     // std::cout << "temp = (" << temp.n_rows << "," << temp.n_cols << ")" << std::endl;
     // std::cout << temp <<std::endl;
     
@@ -81,7 +81,7 @@ void tron::trust_region(mat &w, bool set2zero)
     log1("TRON::grad() done.");
 
     
-    // temp = w;
+    // temp = g;
     // temp.reshape(100,5);
     // std::cout<< "after grad()" <<std::endl;
     // std::cout << "temp = (" << temp.n_rows << "," << temp.n_cols << ")" << std::endl;
@@ -96,7 +96,7 @@ void tron::trust_region(mat &w, bool set2zero)
         search = 0;
 
     iter = 1;
-    bool printed = false;
+    bool printed = true;
     while (iter <= m_maxiter and search)
     {
         double cg_rnorm = 0;

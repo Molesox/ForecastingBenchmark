@@ -160,13 +160,15 @@ void arr_base_IX::grad(mat &W, mat &G)
     logger("arr_base_IX:: grad()");
 
     W.reshape(m, k);
-    G = lambdaI * W;
+    G = lambdaI * W;   
 
     if (prob->lag_set != NULL and lambdaAR > 0)
     {
         const uvec &lag_set = *(prob->lag_set);
         const mat &lag_val = *(prob->lag_val);
+
         size_t midx = lag_set.back(); // supposed to be the max index in lag_set
+        
 #pragma omp parallel for
         for (size_t t = 0; t < k; t++)
         {
@@ -187,6 +189,7 @@ void arr_base_IX::grad(mat &W, mat &G)
             }
         }
     }
+
     W = W.as_col();
     G = G.as_col();
 

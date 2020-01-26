@@ -203,6 +203,7 @@ static void TEST_TRMF()
     int i = 0;
     for(auto& el:lagset){
         el = i+1;
+        i++;
     }
     size_t k = 5;
     trmf_prob_t prob(Y, Yt, lagset, k);

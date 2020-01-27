@@ -201,8 +201,9 @@ static void TEST_TRMF()
     arma::mat Yt(20, 100, arma::fill::ones);
     arma::uvec lagset(5, arma::fill::ones);
     int i = 0;
-    for(auto& el:lagset){
-        el = i+1;
+    for (auto &el : lagset)
+    {
+        el = i + 1;
         i++;
     }
     size_t k = 5;
@@ -216,9 +217,33 @@ static void TEST_TRMF()
     trmf_train(prob, param, W, H, lag_val);
 }
 
+static void TEST_TRMF_ROLLING()
+{
+    std::string input = "../IO/datasets/electricity_normal.txt";
+    output = "../IO/outputs/TRMF/";
+
+    arma::mat data;
+    data.load(input);
+
+    trmf_param_t param = trmf_param_t();
+    param.lambdaI = 0.5;
+    param.lambdaAR = 125;
+    param.lambdaLag = 2;
+    size_t RANK = 30;
+
+    arma::uvec lagset;
+    lagset << 1 << 2 << 3 << 4 << 5 << 6 << 7 << 8 << 9 << 10 << 11 << 12 << 13 << 14 << 15 << 16 << 17 << 18 << 19 << 20 << 21 << 22 << 23 << 24 << 168 << 169 << 170 << 171 << 172 << 173 << 174 << 175 << 176 << 177 << 178 << 179 << 180 << 181 << 182 << 183 << 184 << 185 << 186 << 187 << 188 << 189 << 190 << 191;
+
+    arma::mat pred;
+    pred = multi_pred(data, param, 24, 7,lagset,RANK);
+
+    pred.save(output + "newCppp.txt", arma::raw_ascii);
+}
+
 int main()
 {
 
+    TEST_TRMF_ROLLING();
     //ss
 
     //  arma::vec time_lags;
@@ -229,11 +254,7 @@ int main()
     //  uvec index = linspace<uvec>(0, 4-1, 4);
     //  std::cout<< index <<std::endl;
 
-       TEST_TRMF();
-
-    
-    
-    
+    //    TEST_TRMF();
 
     return 0;
 }

@@ -29,7 +29,7 @@ struct l2r_ls_fY_IX_chol : public solver_t
 
         YH = mat(m, k);
         HTH = mat(k, k);
-        std::cout << "YH = (" << YH.n_rows << "," << YH.n_cols << ")" << std::endl;
+      
         logger("l2r_ls_fY_IX_chol::constructor()");
 
         trYTY = arma::dot(Y, Y);
@@ -60,7 +60,7 @@ struct l2r_ls_fY_IX_chol : public solver_t
             init_prob();
         }
         W = YH;
-        arma::mat Res = arma::solve(HTH, W.t());
+        arma::mat Res = arma::solve(HTH, W.t(),arma::solve_opts::fast);
         W = Res.t();
         // HTH will be changed to a cholesky factorization after the above call.
         // Thus we need to flip done_init to false again
@@ -160,7 +160,7 @@ void arr_base_IX::grad(mat &W, mat &G)
     logger("arr_base_IX:: grad()");
 
     W.reshape(m, k);
-    G = lambdaI * W;   
+    G = lambdaI * W;
 
     if (prob->lag_set != NULL and lambdaAR > 0)
     {
@@ -168,7 +168,7 @@ void arr_base_IX::grad(mat &W, mat &G)
         const mat &lag_val = *(prob->lag_val);
 
         size_t midx = lag_set.back(); // supposed to be the max index in lag_set
-        
+
 #pragma omp parallel for
         for (size_t t = 0; t < k; t++)
         {
@@ -280,6 +280,69 @@ void arr_ls_fY_IX::Hv(mat &S, mat &Hs)
     Hs = Hs.as_col();
     logger("arr_ls_fY_IX:: Hv() done.");
 }
+arma::mat multi_pred(arma::mat& data, trmf_param_t &param, size_t window, size_t nb_windows, arma::uvec lagset, size_t rank)
+{
+
+
+   
+    size_t cols = data.n_cols;
+    
+
+    arma::mat full = data;
+    arma::mat pred((window * nb_windows), cols, arma::fill::zeros);
+
+    arma::mat W;
+    arma::mat H;
+    arma::mat lag_val;
+
+   
+
+    size_t trn_start, trn_end;
+    for (size_t i = 0; i < nb_windows; i++)
+    {
+        trn_start = 0;
+        trn_end = data.n_rows - (nb_windows - i) * window;
+        trn_end--;
+
+        
+        arma::mat Y = full.rows(arma::span(trn_start, trn_end));
+        arma::mat Yt= Y.t();
+        trmf_prob_t prob(Y,Yt,lagset,rank);
+        size_t rows = Y.n_rows;
+        arma::mat newW(rows + window, rank, arma::fill::zeros);
+
+        if (i == 0)
+        {
+            trmf_initialization(prob, param, W, H, lag_val);
+            if (not check_dimension(prob, param, W, H, lag_val))
+                break;
+        }
+
+        trmf_train(prob, param, W, H, lag_val);
+     
+        
+        //latent forecast
+        newW.rows(0, rows  - 1) = W.rows(0, rows - 1);
+        
+      
+        
+        for (size_t j = rows; j < rows + window; j++)
+        {
+            arma::mat temp = newW.rows(j - prob.lag_set) % lag_val;
+           
+            
+            newW.row(j) = arma::sum(temp);
+        }
+     
+        
+        
+        arma::mat doty = (newW* H.t());
+        pred.rows(arma::span(i * window, (i + 1) * window -1)) =doty.rows(doty.n_rows - window, doty.n_rows - 1) ;
+        W = newW;
+    }
+
+    return pred;
+}
 
 void trmf_train(trmf_prob_t &prob, trmf_param_t &param, mat &W, mat &H, mat &lag_val)
 {
@@ -321,11 +384,8 @@ void trmf_train(trmf_prob_t &prob, trmf_param_t &param, mat &W, mat &H, mat &lag
             W_solver.init_prob();
             logger("Solving W");
             W_solver.solve(W);
-            // std::cout<< "iter = "<< iter <<std::endl;
-            
-            // std::cout << "W = (" << W.n_rows << "," << W.n_cols << ")" << std::endl;
-            // std::cout << W <<std::endl;
-            
+
+
             logger("W solved");
         }
 
@@ -339,12 +399,7 @@ void trmf_train(trmf_prob_t &prob, trmf_param_t &param, mat &W, mat &H, mat &lag
             logger("Theta solved");
         }
     }
-    std::cout << "H = (" << H.n_rows << "," << H.n_cols << ")" << std::endl;
-    std::cout << H << std::endl;
-    std::cout << "W = (" << W.n_rows << "," << W.n_cols << ")" << std::endl;
-    std::cout << W << std::endl;
-    std::cout << "lag_val = (" << lag_val.n_rows << "," << lag_val.n_cols << ")" << std::endl;
-    std::cout << lag_val << std::endl;
+
 }
 void trmf_initialization(const trmf_prob_t &prob, const trmf_param_t &param, mat &W, mat &H, mat &lag_val)
 {
@@ -359,9 +414,7 @@ void trmf_initialization(const trmf_prob_t &prob, const trmf_param_t &param, mat
 
     lag_val = mat(prob.lag_set.n_rows, k, arma::fill::ones);
 
-    std::cout << "W = (" << W.n_rows << "," << W.n_cols << ")" << std::endl;
-    std::cout << "H = (" << H.n_rows << "," << H.n_cols << ")" << std::endl;
-    std::cout << "lag_val = (" << lag_val.n_rows << "," << lag_val.n_cols << ")" << std::endl;
+
 }
 bool check_dimension(const trmf_prob_t &prob, const trmf_param_t &param, const mat &W, const mat &H, const mat &lag_val)
 {

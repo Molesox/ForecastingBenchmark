@@ -49,7 +49,7 @@ struct arr_param_t
         lambdaAR = 0.1;
         eps = 0.1;
         eps_cg = 0.1;
-        max_tron_iter = 1;
+        max_tron_iter = 2;
         max_cg_iter = 10;
     }
 };
@@ -82,7 +82,7 @@ struct trmf_param_t : public arr_param_t
     trmf_param_t() : arr_param_t()
     {
         lambdaLag = 0.1;
-        max_iter = 1;
+        max_iter = 40;
         period_W = 1;
         period_H = 1;
         period_Lag = 2;
@@ -92,8 +92,8 @@ struct trmf_param_t : public arr_param_t
 struct solver_t
 {
     virtual void init_prob() = 0;
-    virtual void solve(arma::mat& W) = 0;
-    virtual double solver_fun(arma::mat& W) { return 0.; }
+    virtual void solve(arma::mat &W) = 0;
+    virtual double solver_fun(arma::mat &W) { return 0.; }
     virtual ~solver_t() {}
 };
 
@@ -137,17 +137,17 @@ struct arr_solver : public solver_t
     }
 
     void init_prob()
-    {   
+    {
 
         if (fun_obj)
         {
-            logger( "arr_solver::init_prob() calling fun_obj->init()" );
-            
+            logger("arr_solver::init_prob() calling fun_obj->init()");
+
             fun_obj->init();
         }
         else if (solver_obj)
         {
-             logger( "arr_solver::init_prob() calling solver_obj->init_prob()" );
+            logger("arr_solver::init_prob() calling solver_obj->init_prob()");
             solver_obj->init_prob();
         }
         done_init = true;
@@ -155,51 +155,50 @@ struct arr_solver : public solver_t
 
     void set_eps(double eps) { tron_obj->set_eps(eps); }
 
-    void solve(arma::mat& w)
+    void solve(arma::mat &w)
     {
-        logger( "arr_solver::solve()" );
+        logger("arr_solver::solve()");
 
         if (!done_init)
         {
-            logger( "arr_solver::init prob" );
+            logger("arr_solver::init prob");
             this->init_prob();
-            logger( "arr_solver::init prob done." );
+            logger("arr_solver::init prob done.");
         }
         if (tron_obj)
         {
-            logger( "arr_solver::setting tron" );
+            logger("arr_solver::setting tron");
             bool set_w_to_zero = false;
             w = w.as_col();
             tron_obj->set_solver(w, set_w_to_zero);
-            w.reshape(prob->m,prob->k);
-            logger( "arr_solver::tron done." );
+            w.reshape(prob->m, prob->k);
+            logger("arr_solver::tron done.");
         }
         else if (solver_obj)
         {
-            logger( "arr_solver::solver_obj calling solve()" );
+            logger("arr_solver::solver_obj calling solve()");
 
             solver_obj->solve(w);
-            logger( "arr_solver::solver_obj solved." );
+            logger("arr_solver::solver_obj solved.");
         }
     }
 
-    double solver_fun(arma::mat& w)
+    double solver_fun(arma::mat &w)
     {
-       
-        
+
         if (!done_init)
         {
-            logger( "arr_solver::solver_fun() calling init_prob()" );
+            logger("arr_solver::solver_fun() calling init_prob()");
             init_prob();
         }
         if (fun_obj)
         {
-             logger( "arr_solver::solver_fun() calling fun_obj->fun()" );
+            logger("arr_solver::solver_fun() calling fun_obj->fun()");
             return fun_obj->fun(w);
         }
         else if (solver_obj)
         {
-            logger( "arr_solver::solver_fun() calling solver_obj->solver_fun()" );
+            logger("arr_solver::solver_fun() calling solver_obj->solver_fun()");
             return solver_obj->solver_fun(w);
         }
         else
@@ -266,8 +265,8 @@ public:
 
     void init()
     {
-        logger( "arr_ls_fY_IX::init() " );
-        
+        logger("arr_ls_fY_IX::init() ");
+
         trYTY = arma::dot(Y, Y);
         YH = Y * H;
         HTH = H.t() * H;
@@ -292,12 +291,11 @@ class l2r_autoregressive_solver
     bool done_init;
 
 public:
-    l2r_autoregressive_solver(const arma::mat &T, const arma::uvec &lag_set, double lambda) :
-    T(T),
-    lag_set(lag_set),
-    m(T.n_rows),
-    k(T.n_cols),
-    lambda(lambda)
+    l2r_autoregressive_solver(const arma::mat &T, const arma::uvec &lag_set, double lambda) : T(T),
+                                                                                              lag_set(lag_set),
+                                                                                              m(T.n_rows),
+                                                                                              k(T.n_cols),
+                                                                                              lambda(lambda)
     {
         nr_threads = 12;
         univate_series_set.resize(nr_threads, arma::vec(m));
@@ -322,12 +320,12 @@ public:
     {
         size_t start = lag_set.back();
         size_t end = m;
-        logger("l2_autoregressive_solver::solve()" );
-        
-// #pragma omp parallel for schedule(static)
+        logger("l2_autoregressive_solver::solve()");
+
+#pragma omp parallel for schedule(static)
         for (size_t t = 0; t < k; t++)
         {
-            int tid =  omp_get_thread_num(); // thread ID
+            int tid = omp_get_thread_num(); // thread ID
             arma::vec &univate_series = univate_series_set[tid];
             for (size_t i = 0; i < m; i++)
             {
@@ -354,26 +352,18 @@ public:
                 }
                 Hessian.at(i, i) += lambda;
             }
-          
-        //    std::cout << "Hessian = (" << Hessian.n_rows << "," << Hessian.n_cols << ")" << std::endl;
-        //    std::cout << Hessian <<std::endl;
-        //    std::cout << "y = (" << y.n_rows << "," << y.n_cols << ")" << std::endl;
-        //    std::cout << y <<std::endl;
-           
-           
-           y = arma::solve(Hessian, y);
 
-        //    std::cout << "y = (" << y.n_rows << "," << y.n_cols << ")" << std::endl;
-        //    std::cout << y <<std::endl;
-           
+
+            lag_val.col(t) = arma::solve(Hessian, y,arma::solve_opts::fast);
+
 
         }
     }
 
     double fun(arma::mat &lag_val)
     {
-        logger( "l2_autoregressive_solver::fun()" );
-        
+        logger("l2_autoregressive_solver::fun()");
+
         size_t start = lag_set.back();
         size_t end = m;
         double loss = 0.0;
@@ -399,3 +389,8 @@ public:
 void trmf_initialization(const trmf_prob_t &prob, const trmf_param_t &param, arma::mat &W, arma::mat &H, arma::mat &lag_val);
 bool check_dimension(const trmf_prob_t &prob, const trmf_param_t &param, const arma::mat &W, const arma::mat &H, const arma::mat &lag_val);
 void trmf_train(trmf_prob_t &prob, trmf_param_t &param, arma::mat &W, arma::mat &H, arma::mat &lag_val);
+// arma::mat multi_pred(trmf_prob_t &prob, trmf_param_t &param, size_t window, size_t nb_windows);
+
+arma::mat multi_pred(arma::mat& data, trmf_param_t &param, size_t window, size_t nb_windows, arma::uvec lagset, size_t rank);
+
+

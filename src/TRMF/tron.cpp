@@ -27,11 +27,7 @@ tron::~tron()
 void tron::trust_region(mat &w, bool set2zero)
 {
     log1("TRON:: Trust region on ...");
-     
-    // temp.reshape(100,5);
-    // std::cout<< "before fun() = " <<std::endl;
-    // std::cout << "w = (" << w.n_rows << "," << w.n_cols << ")" << std::endl;
-    // std::cout << temp <<std::endl;
+
     
     
     // Parameters for updating the iterates.
@@ -67,26 +63,11 @@ void tron::trust_region(mat &w, bool set2zero)
     }
 
     f = m_fun.fun(w);
-    log1("TRON::fun() done.");
-
-    // temp = g;
-    // temp.reshape(100,5);
-    // std::cout<< "before grad()" <<std::endl;
-    // std::cout << "temp = (" << temp.n_rows << "," << temp.n_cols << ")" << std::endl;
-    // std::cout << temp <<std::endl;
-    
-    
+    log1("TRON::fun() done.");   
 
     m_fun.grad(w, g);
     log1("TRON::grad() done.");
 
-    
-    // temp = g;
-    // temp.reshape(100,5);
-    // std::cout<< "after grad()" <<std::endl;
-    // std::cout << "temp = (" << temp.n_rows << "," << temp.n_cols << ")" << std::endl;
-    // std::cout << temp <<std::endl;
-    
 
     delta = sqrt(arma::dot(g, g));
     double gnorm1 = delta;
@@ -96,49 +77,12 @@ void tron::trust_region(mat &w, bool set2zero)
         search = 0;
 
     iter = 1;
-    bool printed = true;
+  
     while (iter <= m_maxiter and search)
     {
         double cg_rnorm = 0;
 
-        if(not printed){
-            std::cout<< "BEFORE TRCG" <<std::endl;
-            
-            mat temp = g;
-            temp.reshape(100,5);
-            std::cout << "g = (" << g.n_rows << "," << g.n_cols << ")" << std::endl;
-            std::cout << temp <<std::endl;
-            temp = s;
-            temp.reshape(100,5);
-            std::cout << "s = (" << s.n_rows << "," << s.n_cols << ")" << std::endl;
-            std::cout << temp <<std::endl;
-            temp = r;
-            temp.reshape(100,5);
-            std::cout << "r = (" << r.n_rows << "," << r.n_cols << ")" << std::endl;
-            std::cout << temp <<std::endl;
-            
-        }
-
         cg_iter = trcg(delta, g, s, r, cg_rnorm);
-
-
-        if(not printed){
-            std::cout<< "after TRCG" <<std::endl;
-            
-            mat temp = g;
-            temp.reshape(100,5);
-            std::cout << "g = (" << g.n_rows << "," << g.n_cols << ")" << std::endl;
-            std::cout <<temp <<std::endl;
-            temp = s;
-            temp.reshape(100,5);
-            std::cout << "s = (" << s.n_rows << "," << s.n_cols << ")" << std::endl;
-            std::cout << temp <<std::endl;
-            temp = r;
-            temp.reshape(100,5);
-            std::cout << "r = (" << r.n_rows << "," << r.n_cols << ")" << std::endl;
-            std::cout <<temp <<std::endl;
-            printed = true;
-        }
 
         log1("TRON:: ... conjugate grad ...");
 

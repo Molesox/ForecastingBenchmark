@@ -26,6 +26,8 @@ add_executable(Algorithms
         include/OATS/TemplateOATS.h
         include/TRMF/TRMF.h
         include/TRMF/tron.h
+        include/BEATLEX/Beatlex.h
+        src/BEATLEX/Beatlex.cpp
         src/TRMF/tron.cpp
         src/TRMF/TRMF.cpp
         src/OMF/FixedPenalty.cpp

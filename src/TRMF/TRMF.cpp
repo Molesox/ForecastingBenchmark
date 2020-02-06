@@ -60,8 +60,8 @@ struct l2r_ls_fY_IX_chol : public solver_t
             init_prob();
         }
         W = YH;
-        arma::mat Res = arma::solve(HTH, W.t(),arma::solve_opts::fast);
-        W = Res.t();
+        arma::mat Res = arma::solve(HTH, W.t());
+        W = Res.t();        
         // HTH will be changed to a cholesky factorization after the above call.
         // Thus we need to flip done_init to false again
         done_init = false;
@@ -294,7 +294,7 @@ arma::mat multi_pred(arma::mat& data, trmf_param_t &param, size_t window, size_t
     arma::mat W;
     arma::mat H;
     arma::mat lag_val;
-
+    double total;
    
 
     size_t trn_start, trn_end;
@@ -317,9 +317,14 @@ arma::mat multi_pred(arma::mat& data, trmf_param_t &param, size_t window, size_t
             if (not check_dimension(prob, param, W, H, lag_val))
                 break;
         }
-
+        std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
         trmf_train(prob, param, W, H, lag_val);
-     
+        std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+        std::cout << "Time difference = " 
+        << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count()
+        << "[ms]" << std::endl;
+        total += std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count();
+
         
         //latent forecast
         newW.rows(0, rows  - 1) = W.rows(0, rows - 1);
@@ -340,7 +345,8 @@ arma::mat multi_pred(arma::mat& data, trmf_param_t &param, size_t window, size_t
         pred.rows(arma::span(i * window, (i + 1) * window -1)) =doty.rows(doty.n_rows - window, doty.n_rows - 1) ;
         W = newW;
     }
-
+    std::cout<< "total " << total<<std::endl;
+    
     return pred;
 }
 
@@ -409,10 +415,10 @@ void trmf_initialization(const trmf_prob_t &prob, const trmf_param_t &param, mat
     size_t n = prob.n;
     size_t k = prob.k;
 
-    W = mat(m, k, arma::fill::ones);
-    H = mat(n, k, arma::fill::ones);
+    W = mat(m, k, arma::fill::randn);
+    H = mat(n, k, arma::fill::randn);
 
-    lag_val = mat(prob.lag_set.n_rows, k, arma::fill::ones);
+    lag_val = mat(prob.lag_set.n_rows, k, arma::fill::randn);
 
 
 }

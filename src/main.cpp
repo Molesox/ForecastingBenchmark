@@ -19,6 +19,8 @@
 
 #include "LSRN/LatentSpaceRN.h"
 
+#include "BEATLEX/Beatlex.h"
+
 #include <chrono>
 
 std::string input = "../IO/datasets/trmfSynt.txt";
@@ -224,6 +226,12 @@ static void TEST_TRMF_ROLLING()
 
     arma::mat data;
     data.load(input);
+    // double min = data.min();
+    std::cout << "data = (" << data.n_rows << "," << data.n_cols << ")" << std::endl;
+    // std::cout<< "min = " << min <<std::endl;
+    // min--;
+    // data.transform([min](double val) { return (val + (-1) * min); });
+    
 
     trmf_param_t param = trmf_param_t();
     param.lambdaI = 0.5;
@@ -236,14 +244,20 @@ static void TEST_TRMF_ROLLING()
 
     arma::mat pred;
     pred = multi_pred(data, param, 24, 7,lagset,RANK);
-
+    // pred.transform([min](double val) { return (val + min); });
     pred.save(output + "newCppp.txt", arma::raw_ascii);
+}
+
+static void TEST_BEATLEX(){
+
+    
+
 }
 
 int main()
 {
 
-    TEST_TRMF_ROLLING();
+    TEST_BEATLEX();
     //ss
 
     //  arma::vec time_lags;

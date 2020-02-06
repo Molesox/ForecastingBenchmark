@@ -3,7 +3,6 @@
 #include <assert.h>
 #include <omp.h>
 #include "tron.h"
-
 void logger(std::string text);
 struct arr_prob_t
 {
@@ -354,7 +353,7 @@ public:
             }
 
 
-            lag_val.col(t) = arma::solve(Hessian, y,arma::solve_opts::fast);
+            lag_val.col(t) = arma::solve(Hessian, y);
 
 
         }

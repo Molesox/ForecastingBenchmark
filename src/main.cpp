@@ -249,26 +249,27 @@ static void TEST_TRMF_ROLLING()
 }
 
 static void TEST_BEATLEX(){
+    std::string input = "../IO/datasets/electricity_normal.txt";
+    arma::mat data;
+    data.load(input);
+    data = data.t();
+   
+    
+    data = data.cols(0,4824);
+    std::cout << "data = (" << data.n_rows << "," << data.n_cols << ")" << std::endl;
+
+    Beatlex b(data,5,180,250,175);
+    auto besttup = b.new_segment(1);
 
     
-
 }
+
 
 int main()
 {
-
+  
     TEST_BEATLEX();
-    //ss
 
-    //  arma::vec time_lags;
-    //  time_lags << 1 << 2;
-
-    //  std::cout<< 22 - time_lags <<std::endl;
-
-    //  uvec index = linspace<uvec>(0, 4-1, 4);
-    //  std::cout<< index <<std::endl;
-
-    //    TEST_TRMF();
-
+    
     return 0;
 }

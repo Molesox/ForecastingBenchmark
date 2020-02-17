@@ -138,13 +138,8 @@ std::tuple<size_t, size_t> Beatlex::new_segment(size_t cur)
             ave_cost(span(S - 1), span(k - 1), span(0, Smin - 1)).fill(arma::datum::inf);
         }
     }
-    arma::uword a = ave_cost.index_min();
-    arma::vec min = arma::min(ave_cost);
+    arma::uword ave_min = ave_cost.index_min();
+    arma::uvec min = arma::ind2sub(arma::size(ave_cost), ave_min).head_rows(2);
 
-    return std::make_tuple(a, 0);
+    return std::make_tuple(min(0), min(1));
 }
-/*
-[~, best_idx] = nanmin(ave_costs(:));
-[best_S1, best_k, ~] = ind2sub(size(ave_costs), best_idx);
-disp([best_S1, best_k])
-*/

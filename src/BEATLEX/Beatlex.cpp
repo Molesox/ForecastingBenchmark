@@ -3,6 +3,8 @@
 #include <algorithm>
 using arma::mat;
 using arma::span;
+using arma::uvec;
+using arma::vec;
 arma::mat distance(const arma::mat &X, const arma::mat &Y)
 {
     arma::mat XX, YY, XY, D;
@@ -99,6 +101,10 @@ dtw_t dtw(mat t, mat r, size_t max_dis)
 Beatlex::Beatlex(mat &data, size_t smin, size_t smax, size_t maxdist,
                  size_t predsteps) : X(data), Smin(smin), Smax(smax), maxdist(maxdist)
 {
+
+    model_momentum = 0.8;
+    max_vocab = 5;
+    totalerr = 0;
 }
 
 std::tuple<size_t, size_t> Beatlex::new_segment(size_t cur)
@@ -142,4 +148,114 @@ std::tuple<size_t, size_t> Beatlex::new_segment(size_t cur)
     arma::uvec min = arma::ind2sub(arma::size(ave_cost), ave_min).head_rows(2);
 
     return std::make_tuple(min(0), min(1));
+}
+
+void Beatlex::summarize_seq()
+{
+    auto best_initial_tup = new_segment(1);
+    size_t best_initial = std::get<0>(best_initial_tup);
+
+    ends.push_back(best_initial);
+    starts.push_back(1);
+    idx.push_back(1);
+    models.push_back(X.cols(starts.front(), ends.front()));
+
+    double clust_threshold = 0.3;
+    double mean_dev = arma::mean(arma::square(X.as_col() - arma::mean(X.as_col())));
+    double best_pref_lenght = NAN;
+    size_t Xcols = X.n_cols;
+    bool done = false;
+    while (ends.back() < Xcols and not done)
+    {
+        size_t curr_idx = starts.size() + 1;
+        size_t curr = ends.back();
+        size_t num_models = models.size();
+        starts.push_back(curr);
+        mat ave_cost(num_models, Smax);
+        ave_cost.fill(arma::datum::inf);
+
+        size_t cur_end = std::min(curr + Smax - 1, Xcols);
+        mat Xcur = X.cols(curr, cur_end - 1);
+        dtw_t res;
+        mat dtwcost;
+
+        for (size_t k = 0; k < num_models; k++)
+        {
+            res = dtw(models[k], Xcur, maxdist);
+            ave_cost(arma::span(k), arma::span(0, Xcur.n_cols - 1)) = res.D.row(res.D.n_rows - 1) / arma::regspace(1, Xcur.n_cols).t();
+            ave_cost(arma::span(k), arma::span(0, Smin - 1)).fill(arma::datum::nan);
+        }
+
+        auto best_idx = ave_cost.index_min();
+        auto best_cost = ave_cost(best_idx);
+
+        uvec min = arma::ind2sub(arma::size(ave_cost), best_idx).head_rows(2);
+        size_t best_k = min(0);
+        size_t best_size = min(1);
+
+        vec good_prefix_costs;
+        vec good_prefix_length;
+        mat ave_prefix_cost;
+        if (curr + Smax > Xcols)
+        {
+            good_prefix_costs = vec(num_models).fill(arma::datum::nan);
+            good_prefix_length = vec(num_models).fill(arma::datum::nan);
+            dtw_t res;
+            for (size_t k = 0; k < num_models; k++)
+            {
+                res = dtw(models[k], Xcur, maxdist);
+                ave_prefix_cost = res.D.col(res.D.n_cols - 1) / arma::regspace(1, models[k].n_cols);
+
+                auto best_prefix_idx = ave_prefix_cost.index_min();
+                auto best_prefix_cost = ave_prefix_cost(best_prefix_idx);
+                good_prefix_costs(k) = best_prefix_cost;
+                good_prefix_length(k) = best_prefix_idx;
+            }
+
+            auto best_prefix_k = good_prefix_costs.index_min();
+            auto best_prefix_cost = good_prefix_costs(best_prefix_k);
+            auto best_prefix_length = good_prefix_length(best_prefix_k);
+
+            if (best_prefix_cost < best_cost)
+            {
+                ends[curr_idx] = Xcols;
+                idx[curr_idx] = best_prefix_k;
+                break;
+            }
+        }
+        mat Xbest = X.cols(curr, curr + best_size - 1);
+        if (best_cost > clust_threshold * mean_dev and models.size() < max_vocab)
+        {
+            auto best_S1 = std::get<0>(new_segment(curr));
+            ends[curr_idx] = curr + best_S1 - 1;
+            idx[curr_idx] = num_models + 1;
+            models.push_back(X.cols(starts[curr_idx], ends[curr_idx]));
+            totalerr += clust_threshold * mean_dev * best_S1;
+        }
+        else
+        {
+            ends[curr_idx] = curr + best_size - 1;
+            idx[curr_idx] = best_k;
+            totalerr += best_cost * best_size;
+            dtw_t res = dtw(models[best_k], Xbest, maxdist);
+            mat trace_sum(arma::size(models[best_k]), arma::fill::zeros);
+            for (size_t t = 0; t < res.w.n_cols; t++)
+            {
+                trace_sum.col(res.w(t, 0)) = trace_sum.col(res.w(t, 0)) + Xbest.col(res.w(t, 1));
+            }
+            vec b = arma::unique(res.w.col(0));
+            uvec c = arma::hist(res.w.col(0), b);
+            arma::urowvec trace_counts = arma::conv_to<arma::urowvec>::from(c);
+            models[best_k] = model_momentum * models[best_k] + (1. - model_momentum) * trace_sum / c;
+        }
+
+        /*
+
+        trace_ave = bsxfun(@rdivide, trace_summed, trace_counts);
+        models{best_k} = model_momentum * models{best_k} + (1 - model_momentum) * trace_ave;
+        
+        */
+
+        done = true;
+    }
 }

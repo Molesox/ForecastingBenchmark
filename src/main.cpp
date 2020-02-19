@@ -259,7 +259,8 @@ static void TEST_BEATLEX(){
     std::cout << "data = (" << data.n_rows << "," << data.n_cols << ")" << std::endl;
 
     Beatlex b(data,5,180,250,175);
-    auto besttup = b.new_segment(1);
+    b.summarize_seq();
+    
 
     
 }
@@ -270,6 +271,7 @@ int main()
   
     TEST_BEATLEX();
 
+    
     
     return 0;
 }

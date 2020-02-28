@@ -252,11 +252,8 @@ void Beatlex::summarize_seq()
 
             if (best_prefix_cost < best_cost)
             {
-                loggy("break");
-                std::cout<< "pute" <<std::endl;
-                std::cout << "iter = " << iter <<std::endl;
-                
-                ends.push_back(Xcols);
+                loggy("break");               
+                ends.push_back(Xcols-1);
                 idx.push_back(best_prefix_k);
                 break;
             }
@@ -300,41 +297,6 @@ void Beatlex::summarize_seq()
             models[best_k] = model_momentum * models[best_k] + (1. - model_momentum) * ave;
 
         }
-
-        std::cout << "iter = " << iter <<std::endl;
-        std::cout << "best_cost = " << best_cost << std::endl;
-        std::cout << "best_idx = " << best_idx << std::endl;
-        std::cout << "best_initial = " << best_initial << std::endl;
-        std::cout << "curr_idx = " << curr_idx << std::endl;
-
-        std::cout << "idx: ";
-        for (auto &el : idx)
-        {
-            std::cout << el << ", ";
-        }
-        std::cout << std::endl;
-
-        std::cout << "ends: ";
-        for (auto &el : ends)
-        {
-            std::cout << el << ", ";
-        }
-        std::cout << std::endl;
-
-        std::cout << "starts ";
-        for (auto &el : starts)
-        {
-            std::cout << el << ", ";
-        }
-        std::cout << std::endl;
-
-        std::cout << "models size() = " << models.size() << std::endl;
-        std::cout << "totalerr = " << totalerr << std::endl;
-        std::cout << "curr = " << curr <<std::endl;
-        
-        std::cout << "-------------------" << std::endl;
-        std::cout << "-------------------" << std::endl;
-
         iter++;
     }
 }

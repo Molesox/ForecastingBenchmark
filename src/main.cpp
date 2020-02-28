@@ -260,6 +260,8 @@ static void TEST_BEATLEX(){
 
     Beatlex b(data,5,180,250,175);
     b.summarize_seq();
+
+    
     
 
     

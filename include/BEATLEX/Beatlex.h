@@ -35,7 +35,7 @@ arma::mat distance(const arma::mat &X, const arma::mat &Y);
 
 class Beatlex
 {
-private:
+public:
     const arma::mat &X;
     arma::mat Xp;
     std::vector<arma::mat> models;

@@ -19,8 +19,17 @@ arma::mat distance(const arma::mat &X, const arma::mat &Y)
     return D;
 }
 
-dtw_t dtw(mat t, mat r, size_t max_dis)
+void loggy(std::string text)
 {
+    if (VERBOSY)
+    {
+        std::cout << text << std::endl;
+    }
+}
+
+dtw_t dtw(mat &t, mat &r, size_t max_dis)
+{
+    // loggy("DTW::entering");
     dtw_t ret;
 
     size_t rows = t.n_rows;
@@ -61,7 +70,7 @@ dtw_t dtw(mat t, mat r, size_t max_dis)
     ret.k = 1;
     ret.w << N << M;
 
-    arma::rowvec tmp;
+    arma::urowvec tmp;
 
     while (N + M != 2)
     {
@@ -95,6 +104,7 @@ dtw_t dtw(mat t, mat r, size_t max_dis)
         tmp << N << M;
         ret.w = arma::join_vert(ret.w, tmp);
     }
+    // loggy("DTW::exit");
     return ret;
 }
 
@@ -109,6 +119,8 @@ Beatlex::Beatlex(mat &data, size_t smin, size_t smax, size_t maxdist,
 
 std::tuple<size_t, size_t> Beatlex::new_segment(size_t cur)
 {
+
+    loggy("NEW_SEGM::entering");
     size_t num_models = models.size();
 
     arma::cube ave_cost(Smax, num_models + 1, Smax);
@@ -116,75 +128,93 @@ std::tuple<size_t, size_t> Beatlex::new_segment(size_t cur)
 
     arma::mat current_model;
     arma::mat Xcur;
-    dtw_t dtw_res;
 
+    dtw_t dtw_res;
     for (size_t S = Smin; S <= Smax; S++)
     {
         if (cur + S >= X.n_cols)
         {
+
             continue;
         }
 
-        for (size_t k = 1; k <= num_models + 1; k++)
+        for (size_t k = 0; k < num_models + 1; k++)
         {
-            if (k <= num_models)
+
+
+            if (k < num_models)
             {
+                
                 current_model = models[k];
+                
             }
             else
             {
-                current_model = X.cols(cur - 1, cur + S - 2);
+                current_model = X.cols(cur , cur + S -1);
             }
-            size_t min = std::min((size_t)X.n_cols, cur + S + Smax - 1);
-
-            Xcur = X.cols(cur + S - 1, min - 1);
+            size_t min = std::min((size_t)X.n_cols, cur + S + Smax - 2);
+            Xcur = X.cols(cur + S , min);
+            
             dtw_res = dtw(current_model, Xcur, maxdist);
 
-            ave_cost(span(S - 1), span(k - 1), span(0, Xcur.n_cols - 1)) = dtw_res.D.row(dtw_res.D.n_rows - 1) / arma::regspace(1, Xcur.n_cols).t();
-            ave_cost(span(S - 1), span(k - 1), span(0, Smin - 1)).fill(arma::datum::inf);
+            ave_cost(span(S - 1), span(k), span(0, Xcur.n_cols - 1)) = dtw_res.D.row(dtw_res.D.n_rows - 1) / arma::regspace(1, Xcur.n_cols).t();
+            ave_cost(span(S - 1), span(k), span(0, Smin - 1)).fill(arma::datum::inf);
         }
     }
+
     arma::uword ave_min = ave_cost.index_min();
     arma::uvec min = arma::ind2sub(arma::size(ave_cost), ave_min).head_rows(2);
+
+    loggy("NEW_SEGM::exit");
 
     return std::make_tuple(min(0), min(1));
 }
 
 void Beatlex::summarize_seq()
 {
+
     auto best_initial_tup = new_segment(1);
     size_t best_initial = std::get<0>(best_initial_tup);
 
-    ends.push_back(best_initial);
-    starts.push_back(1);
-    idx.push_back(1);
-    models.push_back(X.cols(starts.front(), ends.front()));
+    ends.push_back(best_initial - 1);
+    starts.push_back(0);
+    idx.push_back(0);
+    models.push_back(X.cols(starts[0], ends[0]));
 
     double clust_threshold = 0.3;
     double mean_dev = arma::mean(arma::square(X.as_col() - arma::mean(X.as_col())));
     double best_pref_lenght = NAN;
     size_t Xcols = X.n_cols;
-    bool done = false;
-    while (ends.back() < Xcols and not done)
+
+    
+    int iter = 1;
+
+    while (ends.back() < Xcols)
     {
+
+        loggy("SUMMARIZE::entering while loop");
+
         size_t curr_idx = starts.size() + 1;
-        size_t curr = ends.back();
+        size_t curr = ends.back() + 1;
         size_t num_models = models.size();
+
         starts.push_back(curr);
+
         mat ave_cost(num_models, Smax);
         ave_cost.fill(arma::datum::inf);
 
-        size_t cur_end = std::min(curr + Smax - 1, Xcols);
-        mat Xcur = X.cols(curr, cur_end - 1);
-        dtw_t res;
-        mat dtwcost;
+        size_t cur_end = std::min(curr + Smax - 1, Xcols - 1);
+        mat Xcur = X.cols(curr, cur_end);
 
+        dtw_t res;
         for (size_t k = 0; k < num_models; k++)
         {
             res = dtw(models[k], Xcur, maxdist);
             ave_cost(arma::span(k), arma::span(0, Xcur.n_cols - 1)) = res.D.row(res.D.n_rows - 1) / arma::regspace(1, Xcur.n_cols).t();
-            ave_cost(arma::span(k), arma::span(0, Smin - 1)).fill(arma::datum::nan);
+            ave_cost(arma::span(k), arma::span(0, Smin - 2)).fill(arma::datum::nan);
         }
+
+        loggy("SUMMARIZE::dtw() performed for models");
 
         auto best_idx = ave_cost.index_min();
         auto best_cost = ave_cost(best_idx);
@@ -196,11 +226,14 @@ void Beatlex::summarize_seq()
         vec good_prefix_costs;
         vec good_prefix_length;
         mat ave_prefix_cost;
-        if (curr + Smax > Xcols)
+        if (curr + Smax >= Xcols)
         {
+
+            loggy("SUMMARIZE:: if(curr + Smax > Xcols");
             good_prefix_costs = vec(num_models).fill(arma::datum::nan);
             good_prefix_length = vec(num_models).fill(arma::datum::nan);
             dtw_t res;
+
             for (size_t k = 0; k < num_models; k++)
             {
                 res = dtw(models[k], Xcur, maxdist);
@@ -212,50 +245,96 @@ void Beatlex::summarize_seq()
                 good_prefix_length(k) = best_prefix_idx;
             }
 
+            loggy("SUMMARIZE::for models good");
             auto best_prefix_k = good_prefix_costs.index_min();
             auto best_prefix_cost = good_prefix_costs(best_prefix_k);
             auto best_prefix_length = good_prefix_length(best_prefix_k);
 
             if (best_prefix_cost < best_cost)
             {
-                ends[curr_idx] = Xcols;
-                idx[curr_idx] = best_prefix_k;
+                loggy("break");
+                std::cout<< "pute" <<std::endl;
+                std::cout << "iter = " << iter <<std::endl;
+                
+                ends.push_back(Xcols);
+                idx.push_back(best_prefix_k);
                 break;
             }
         }
-        mat Xbest = X.cols(curr, curr + best_size - 1);
+
+        mat Xbest = X.cols(curr, curr + best_size);
         if (best_cost > clust_threshold * mean_dev and models.size() < max_vocab)
         {
+
+            loggy("SUMMARIZE:: if(best_cost > threshold and models.size() < max_vocab)");
             auto best_S1 = std::get<0>(new_segment(curr));
-            ends[curr_idx] = curr + best_S1 - 1;
-            idx[curr_idx] = num_models + 1;
-            models.push_back(X.cols(starts[curr_idx], ends[curr_idx]));
-            totalerr += clust_threshold * mean_dev * best_S1;
+            // auto best_S2 = std::get<1>(new_segment(curr));
+            ends.push_back(curr + best_S1);
+            idx.push_back(num_models);
+            models.push_back(X.cols(starts[curr_idx - 1], ends[curr_idx - 1]));
+
+            totalerr += clust_threshold * mean_dev * (best_S1 + 1);
         }
         else
         {
-            ends[curr_idx] = curr + best_size - 1;
-            idx[curr_idx] = best_k;
+            loggy("not if(best_cost > threshold and models.size() < max_vocab)");
+            ends.push_back( curr + best_size);
+            idx.push_back(best_k);
+
             totalerr += best_cost * best_size;
+
             dtw_t res = dtw(models[best_k], Xbest, maxdist);
             mat trace_sum(arma::size(models[best_k]), arma::fill::zeros);
-            for (size_t t = 0; t < res.w.n_cols; t++)
-            {
-                trace_sum.col(res.w(t, 0)) = trace_sum.col(res.w(t, 0)) + Xbest.col(res.w(t, 1));
+            
+            for (size_t t = 0; t < res.w.n_rows; t++)
+            {              
+                trace_sum.col(res.w(t, 0)-1) = trace_sum.col(res.w(t, 0)-1) + Xbest.col(res.w(t, 1)-1);  
             }
-            vec b = arma::unique(res.w.col(0));
+            
+            uvec b = arma::unique(res.w.col(0));
             uvec c = arma::hist(res.w.col(0), b);
+
             arma::urowvec trace_counts = arma::conv_to<arma::urowvec>::from(c);
-            models[best_k] = model_momentum * models[best_k] + (1. - model_momentum) * trace_sum / c;
+            mat ave =  trace_sum / arma::repmat(trace_counts,20,1);
+       
+            models[best_k] = model_momentum * models[best_k] + (1. - model_momentum) * ave;
+
         }
 
-        /*
+        std::cout << "iter = " << iter <<std::endl;
+        std::cout << "best_cost = " << best_cost << std::endl;
+        std::cout << "best_idx = " << best_idx << std::endl;
+        std::cout << "best_initial = " << best_initial << std::endl;
+        std::cout << "curr_idx = " << curr_idx << std::endl;
 
-        trace_ave = bsxfun(@rdivide, trace_summed, trace_counts);
-        models{best_k} = model_momentum * models{best_k} + (1 - model_momentum) * trace_ave;
+        std::cout << "idx: ";
+        for (auto &el : idx)
+        {
+            std::cout << el << ", ";
+        }
+        std::cout << std::endl;
+
+        std::cout << "ends: ";
+        for (auto &el : ends)
+        {
+            std::cout << el << ", ";
+        }
+        std::cout << std::endl;
+
+        std::cout << "starts ";
+        for (auto &el : starts)
+        {
+            std::cout << el << ", ";
+        }
+        std::cout << std::endl;
+
+        std::cout << "models size() = " << models.size() << std::endl;
+        std::cout << "totalerr = " << totalerr << std::endl;
+        std::cout << "curr = " << curr <<std::endl;
         
-        */
+        std::cout << "-------------------" << std::endl;
+        std::cout << "-------------------" << std::endl;
 
-        done = true;
+        iter++;
     }
 }

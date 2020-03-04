@@ -109,7 +109,7 @@ dtw_t dtw(mat &t, mat &r, size_t max_dis)
 }
 
 Beatlex::Beatlex(mat &data, size_t smin, size_t smax, size_t maxdist,
-                 size_t predsteps) : X(data), Smin(smin), Smax(smax), maxdist(maxdist)
+                 size_t predsteps) : X(data), Xp(data), Smin(smin), Smax(smax), maxdist(maxdist)
 {
 
     model_momentum = 0.8;
@@ -141,20 +141,18 @@ std::tuple<size_t, size_t> Beatlex::new_segment(size_t cur)
         for (size_t k = 0; k < num_models + 1; k++)
         {
 
-
             if (k < num_models)
             {
-                
+
                 current_model = models[k];
-                
             }
             else
             {
-                current_model = X.cols(cur , cur + S -1);
+                current_model = X.cols(cur, cur + S - 1);
             }
             size_t min = std::min((size_t)X.n_cols, cur + S + Smax - 2);
-            Xcur = X.cols(cur + S , min);
-            
+            Xcur = X.cols(cur + S, min);
+
             dtw_res = dtw(current_model, Xcur, maxdist);
 
             ave_cost(span(S - 1), span(k), span(0, Xcur.n_cols - 1)) = dtw_res.D.row(dtw_res.D.n_rows - 1) / arma::regspace(1, Xcur.n_cols).t();
@@ -183,10 +181,9 @@ void Beatlex::summarize_seq()
 
     double clust_threshold = 0.3;
     double mean_dev = arma::mean(arma::square(X.as_col() - arma::mean(X.as_col())));
-    double best_pref_lenght = NAN;
+    best_prefix_length = NAN;
     size_t Xcols = X.n_cols;
 
-    
     int iter = 1;
 
     while (ends.back() < Xcols)
@@ -248,12 +245,13 @@ void Beatlex::summarize_seq()
             loggy("SUMMARIZE::for models good");
             auto best_prefix_k = good_prefix_costs.index_min();
             auto best_prefix_cost = good_prefix_costs(best_prefix_k);
-            auto best_prefix_length = good_prefix_length(best_prefix_k);
+            best_prefix_length = good_prefix_length(best_prefix_k);
+            // std::cout << "best_prefix_length = " << best_prefix_length <<std::endl;
 
             if (best_prefix_cost < best_cost)
             {
-                loggy("break");               
-                ends.push_back(Xcols-1);
+                loggy("break");
+                ends.push_back(Xcols - 1);
                 idx.push_back(best_prefix_k);
                 break;
             }
@@ -275,28 +273,60 @@ void Beatlex::summarize_seq()
         else
         {
             loggy("not if(best_cost > threshold and models.size() < max_vocab)");
-            ends.push_back( curr + best_size);
+            ends.push_back(curr + best_size);
             idx.push_back(best_k);
 
             totalerr += best_cost * best_size;
 
             dtw_t res = dtw(models[best_k], Xbest, maxdist);
             mat trace_sum(arma::size(models[best_k]), arma::fill::zeros);
-            
+
             for (size_t t = 0; t < res.w.n_rows; t++)
-            {              
-                trace_sum.col(res.w(t, 0)-1) = trace_sum.col(res.w(t, 0)-1) + Xbest.col(res.w(t, 1)-1);  
+            {
+                trace_sum.col(res.w(t, 0) - 1) = trace_sum.col(res.w(t, 0) - 1) + Xbest.col(res.w(t, 1) - 1);
             }
-            
+
             uvec b = arma::unique(res.w.col(0));
             uvec c = arma::hist(res.w.col(0), b);
 
             arma::urowvec trace_counts = arma::conv_to<arma::urowvec>::from(c);
-            mat ave =  trace_sum / arma::repmat(trace_counts,20,1);
-       
-            models[best_k] = model_momentum * models[best_k] + (1. - model_momentum) * ave;
+            mat ave = trace_sum / arma::repmat(trace_counts, 20, 1);
 
+            models[best_k] = model_momentum * models[best_k] + (1. - model_momentum) * ave;
         }
         iter++;
     }
+}
+arma::mat Beatlex::forecast()
+{
+    summarize_seq();
+
+    std::vector<int> p_starts;
+    std::vector<int> p_ends;
+    arma::mat suffix;
+
+    suffix = models[idx.back()].cols(best_prefix_length + 1, models[idx.back()].n_cols - 1);
+
+    if(not suffix.is_empty())
+    {
+        suffix.each_col() += (X.col(X.n_cols - 1) - suffix.col(0));
+        p_starts.push_back(X.n_cols + 1);
+        p_ends.push_back(Xp.n_cols);       
+    }
+
+    markov mark(3);
+    arma::vec temp = arma::conv_to<arma::vec>::from(idx); //TODO:: This is bad: arma -> std and std -> arma
+
+    for (size_t i = 0; i < idx.size(); i++)
+    {
+        mark.update(temp.rows(0, i));
+    }
+    arma::vec p_idx;
+    while (Xp.n_cols < pred_steps + X.n_cols)
+    {
+        size_t best_char = mark.predict(arma::conv_to<arma::vec>::from(idx));
+        exit(2);
+    }
+    
+
 }

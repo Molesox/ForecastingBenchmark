@@ -1,6 +1,8 @@
 #include "BEATLEX/Beatlex.h"
 #include <cmath>
+#include <iterator>
 #include <algorithm>
+#include <iostream>
 using arma::mat;
 using arma::span;
 using arma::uvec;
@@ -109,7 +111,7 @@ dtw_t dtw(mat &t, mat &r, size_t max_dis)
 }
 
 Beatlex::Beatlex(mat &data, size_t smin, size_t smax, size_t maxdist,
-                 size_t predsteps) : X(data), Xp(data), Smin(smin), Smax(smax), maxdist(maxdist)
+                 size_t predsteps) : X(data), Xp(data), Smin(smin), Smax(smax), maxdist(maxdist), pred_steps(predsteps)
 {
 
     model_momentum = 0.8;
@@ -307,11 +309,12 @@ arma::mat Beatlex::forecast()
 
     suffix = models[idx.back()].cols(best_prefix_length + 1, models[idx.back()].n_cols - 1);
 
-    if(not suffix.is_empty())
+    if (not suffix.is_empty())
     {
         suffix.each_col() += (X.col(X.n_cols - 1) - suffix.col(0));
         p_starts.push_back(X.n_cols + 1);
-        p_ends.push_back(Xp.n_cols);       
+        p_ends.push_back(Xp.n_cols);
+        Xp = arma::join_horiz(Xp, suffix);
     }
 
     markov mark(3);
@@ -321,12 +324,38 @@ arma::mat Beatlex::forecast()
     {
         mark.update(temp.rows(0, i));
     }
-    arma::vec p_idx;
+
+    std::vector<size_t> p_idx;
+    arma::vec temp1;
+    arma::vec temp2;
+
     while (Xp.n_cols < pred_steps + X.n_cols)
     {
-        size_t best_char = mark.predict(arma::conv_to<arma::vec>::from(idx));
-        exit(2);
-    }
-    
+        // std::cout << "pred_steps = " << pred_steps <<std::endl;
+        
+        //TODO:: same problem as above.
+        temp1 = arma::conv_to<arma::vec>::from(idx);
+        if (p_idx.size() != 0)
+            temp2 = arma::conv_to<arma::vec>::from(p_idx);
 
+        size_t best_char = mark.predict(arma::join_cols(temp, temp2));
+        // std::cout << "best_char = " << best_char << std::endl;
+
+        p_idx.push_back(best_char);
+        p_starts.push_back(Xp.n_cols + 1);
+
+        // std::copy(
+        //     p_starts.begin(),
+        //     p_starts.end(),
+        //     std::ostream_iterator<size_t>(std::cout, "\n"));
+
+        Xp = arma::join_horiz(Xp, models[best_char]);
+        // std::cout << "Xp = (" << Xp.n_rows << "," << Xp.n_cols << ")" << std::endl;
+
+        p_ends.push_back(Xp.n_cols);
+
+        // exit(2);
+    }
+    Xp = Xp.cols(X.n_cols + 1,  pred_steps + X.n_cols);
+    return Xp;
 }

@@ -40,7 +40,7 @@ struct markov
 {
     uint8_t maxord;
     vmaps_t m_maps;
-    std::vector<char> m_chars;
+    std::vector<size_t> m_chars;
 
     void print_map()
     {
@@ -71,21 +71,15 @@ struct markov
     void update(const arma::vec &v)
     {
 
-        // std::cout << "v = (" << v.n_rows << "," << v.n_cols << ")" << std::endl;
-        // std::cout << "maxord = " << maxord <<std::endl;
-
         for (size_t ord = 0; ord <= maxord; ord++)
         {
             if (v.n_rows > ord)
             {
-                if (std::find(m_chars.begin(), m_chars.end(), v.back()) == m_chars.end()) //just to tell elem not in vect...
+                if (std::find(m_chars.begin(), m_chars.end(), v.back()) == m_chars.end()) //elem not in vect.
                 {
                     m_chars.push_back(v.back());
                 }
-                // std::cout << v.rows(v.n_rows - ord -1, v.n_rows -1).t() <<std::endl;
                 std::vector<size_t> seq = arma::conv_to<std::vector<size_t>>::from(v.rows(v.n_rows - ord - 1, v.n_rows - 1));
-                // std::cout<< "------" <<std::endl;
-
                 if (m_maps[ord].find(seq) == m_maps[ord].end())
                 {
                     m_maps[ord][seq] = 0;
@@ -106,41 +100,33 @@ struct markov
     size_t predict(const arma::vec &v)
     {
         size_t nb_chars = m_chars.size();
-        arma::vec scores(nb_chars, arma::fill::zeros);
+        size_t best_char = 0;
+        arma::uvec scores(nb_chars, arma::fill::zeros);
         arma::vec context;
 
-        for(size_t ord = maxord; ord > 0; ord --)
+        for (size_t ord = maxord; ord > 0; ord--)
         {
             scores.zeros();
-            context = v.rows(v.n_rows - ord + 1, v.n_rows - 1);
-
+            context = v.rows(v.n_rows - ord, v.n_rows - 1);
+            context.resize(context.size() + 1);
+            std::vector<size_t> seq;
             for (size_t i = 0; i < nb_chars; i++)
             {
-                context.insert_rows(context.n_rows,m_chars[i]);
+                context(context.n_rows - 1) = m_chars[i];
+                seq = arma::conv_to<std::vector<size_t>>::from(context);
+
+                if (m_maps[ord].find(seq) != m_maps[ord].end())
+                {
+                    scores(i) = m_maps[ord][seq];
+                }
             }
-            
+            if (not arma::all(scores))//There is at least 1 non-zero value.
+            {
+                best_char = m_chars[scores.index_max()];
+                break;
+            }
         }
-
-    //   nchar = length(m.chars);
-    // for ord=m.maxord:-1:0
-    //     %     fprintf('for order %d\n', ord);
-    //     scores = zeros(1, nchar);
-    //     context = v(length(v)-ord+1:end);
-    //     for i=1:nchar
-    //         seq = num2str([context m.chars(i)]);
-    //         if isKey(m.maps{ord+1},seq)
-    //             scores(i) = m.maps{ord+1}(seq);
-    //         end
-    //     end
-    //     %     fprintf('scores: %s\n', num2str(scores));
-    //     if ~all(scores == 0)
-    //         [~, best_i] = max(scores);
-    //         best_char = m.chars(best_i);
-    //         break
-    //     end
-    //     %     fprintf('ALL ZERO: DROPPING TO LEVEL %d\n', ord-1);
-    // end
-
+        return best_char;
     }
 };
 

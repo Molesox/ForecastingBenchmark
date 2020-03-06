@@ -231,7 +231,6 @@ static void TEST_TRMF_ROLLING()
     // std::cout<< "min = " << min <<std::endl;
     // min--;
     // data.transform([min](double val) { return (val + (-1) * min); });
-    
 
     trmf_param_t param = trmf_param_t();
     param.lambdaI = 0.5;
@@ -243,36 +242,41 @@ static void TEST_TRMF_ROLLING()
     lagset << 1 << 2 << 3 << 4 << 5 << 6 << 7 << 8 << 9 << 10 << 11 << 12 << 13 << 14 << 15 << 16 << 17 << 18 << 19 << 20 << 21 << 22 << 23 << 24 << 168 << 169 << 170 << 171 << 172 << 173 << 174 << 175 << 176 << 177 << 178 << 179 << 180 << 181 << 182 << 183 << 184 << 185 << 186 << 187 << 188 << 189 << 190 << 191;
 
     arma::mat pred;
-    pred = multi_pred(data, param, 24, 7,lagset,RANK);
+    pred = multi_pred(data, param, 24, 7, lagset, RANK);
     // pred.transform([min](double val) { return (val + min); });
     pred.save(output + "newCppp.txt", arma::raw_ascii);
 }
 
-static void TEST_BEATLEX(){
+static void TEST_BEATLEX()
+{
     std::string input = "../IO/datasets/electricity_normal.txt";
+    std::string output = "../IO/outputs/BEAT/pred_electricity_normal.txt";
     arma::mat data;
     data.load(input);
     data = data.t();
-   
-    
-    data = data.cols(0,4824);
-    std::cout << "data = (" << data.n_rows << "," << data.n_cols << ")" << std::endl;
 
-    Beatlex b(data,5,180,250,175);
-    b.forecast();
+    data = data.cols(0, 4824);
+    // std::cout << "data = (" << data.n_rows << "," << data.n_cols << ")" << std::endl;
+    for(int i = 0; i < 7; i ++){
+    Beatlex b(data, 5, 180, 250, 175);
 
-    
-    
+    std::chrono::steady_clock::time_point begin = std::chrono::steady_clock::now();
+    arma::mat pred = b.forecast();
+    std::chrono::steady_clock::time_point end = std::chrono::steady_clock::now();
+    std::cout << "Time difference = "
+              << std::chrono::duration_cast<std::chrono::milliseconds>(end - begin).count()
+              << "[ms]" << std::endl;
+    }
 
-    
+
+    // std::cout << "pred = (" << pred.n_rows << "," << pred.n_cols << ")" << std::endl;
+    // pred.save(output, arma::raw_ascii);
 }
-
-
 
 int main()
 {
-  
-  TEST_BEATLEX();
-    
+
+    TEST_BEATLEX();
+
     return 0;
 }
